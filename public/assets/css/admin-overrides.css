@@ -1,0 +1,37 @@
+/* Garde les formulaires d'administration contenus dans leurs cartes. */
+.admin-main,
+.admin-panel,
+.admin-grid,
+.admin-grid > *,
+.data-form,
+.data-form > * {
+  min-width: 0;
+}
+
+.data-form {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+  gap: 11px;
+}
+
+.data-form input,
+.data-form select,
+.data-form button,
+.data-form .admin-button {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.data-form input[type="date"] {
+  min-inline-size: 0;
+}
+
+@media (max-width: 560px) {
+  .data-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .data-form .wide {
+    grid-column: auto;
+  }
+}
