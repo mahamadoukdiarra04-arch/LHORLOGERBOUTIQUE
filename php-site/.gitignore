@@ -1,0 +1,5 @@
+app/config.php
+public/.user.ini
+public/products/
+public/og.png
+deploy/
