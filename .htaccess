@@ -1,0 +1,15 @@
+Options -Indexes
+DirectoryIndex index.php
+
+RewriteEngine On
+
+# The Git deployment keeps the PHP project at the domain root while the
+# publicly served files remain under /public.
+RewriteRule ^assets/(.*)$ public/assets/$1 [L]
+RewriteRule ^uploads/(.*)$ public/uploads/$1 [L]
+RewriteRule ^admin/?(.*)$ public/admin/$1 [L]
+
+# Route all storefront paths through the public front controller.
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ public/index.php [L]
