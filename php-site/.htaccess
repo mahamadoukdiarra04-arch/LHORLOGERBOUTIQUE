@@ -3,6 +3,10 @@ DirectoryIndex index.php
 
 RewriteEngine On
 
+# Keep application code, the deployment metadata and database sources private.
+RewriteRule ^(?:app|database)(?:/|$) - [F,L]
+RewriteRule ^\.git(?:/|$) - [F,L]
+
 # The Git deployment keeps the PHP project at the domain root while the
 # publicly served files remain under /public.
 RewriteRule ^assets/(.*)$ public/assets/$1 [L]
