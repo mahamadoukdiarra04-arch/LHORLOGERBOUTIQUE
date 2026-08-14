@@ -8,6 +8,7 @@ RewriteEngine On
 RewriteRule ^assets/(.*)$ public/assets/$1 [L]
 RewriteRule ^uploads/(.*)$ public/uploads/$1 [L]
 RewriteRule ^admin/?(.*)$ public/admin/$1 [L]
+RewriteRule ^(catalog|product|cart|checkout|thank-you)\.php$ public/$1.php [L]
 
 # Route all storefront paths through the public front controller.
 RewriteCond %{REQUEST_FILENAME} !-f
