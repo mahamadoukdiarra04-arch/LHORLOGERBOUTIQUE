@@ -1,5 +1,6 @@
 app/config.php
 public/.user.ini
-public/products/
+public/products/*.png
+public/products/variants/*.png
 public/og.png
 deploy/
