@@ -71,13 +71,3 @@ INSERT IGNORE INTO products (id, slug, sku, name, price_fcfa) VALUES
   (1, 'nocturne-chrono', 'T-01', 'Nocturne Chrono', 52000),
   (2, 'azur-squelette', 'T-02', 'Azur Squelette', 62000),
   (3, 'eclipse-lunaire', 'T-03', 'Éclipse Lunaire', 59000);
-
-INSERT INTO stock_movements (product_id, movement_type, quantity, purchase_price_fcfa, transit_price_fcfa, unit_cost_fcfa, note, actor)
-SELECT 1, 'Réassort', 18, 468000, 81000, 30500, 'Stock initial', 'Système'
-WHERE NOT EXISTS (SELECT 1 FROM stock_movements WHERE product_id=1);
-INSERT INTO stock_movements (product_id, movement_type, quantity, purchase_price_fcfa, transit_price_fcfa, unit_cost_fcfa, note, actor)
-SELECT 2, 'Réassort', 8, 272000, 36800, 38600, 'Stock initial', 'Système'
-WHERE NOT EXISTS (SELECT 1 FROM stock_movements WHERE product_id=2);
-INSERT INTO stock_movements (product_id, movement_type, quantity, purchase_price_fcfa, transit_price_fcfa, unit_cost_fcfa, note, actor)
-SELECT 3, 'Réassort', 4, 128000, 16800, 36200, 'Stock initial', 'Système'
-WHERE NOT EXISTS (SELECT 1 FROM stock_movements WHERE product_id=3);

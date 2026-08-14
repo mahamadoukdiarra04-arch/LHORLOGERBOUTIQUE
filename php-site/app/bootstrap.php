@@ -41,8 +41,36 @@ function db(): PDO {
     return $pdo;
 }
 
+/**
+ * The first version of the admin was populated with indicative purchase and
+ * transit amounts. Keep the opening stock, but never present those placeholders
+ * as real costs.
+ */
+function clear_placeholder_initial_costs(): void {
+    static $completed = false;
+    if ($completed) return;
+    $completed = true;
+
+    try {
+        $statement = db()->prepare(
+            'UPDATE stock_movements
+             SET purchase_price_fcfa = NULL, transit_price_fcfa = NULL, unit_cost_fcfa = NULL
+             WHERE note = ? AND actor = ? AND (
+                 (product_id = 1 AND quantity = 18 AND purchase_price_fcfa = 468000 AND transit_price_fcfa = 81000)
+                 OR (product_id = 2 AND quantity = 8 AND purchase_price_fcfa = 272000 AND transit_price_fcfa = 36800)
+                 OR (product_id = 3 AND quantity = 4 AND purchase_price_fcfa = 128000 AND transit_price_fcfa = 16800)
+             )'
+        );
+        $statement->execute(['Stock initial', 'Système']);
+    } catch (Throwable) {
+        // The cleanup is only relevant once the inventory tables exist.
+    }
+}
+
 function e(?string $value): string { return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8'); }
-function money(float|int $value): string { return number_format(round($value), 0, ',', ' ') . ' FCFA'; }
+function money(float|int|null $value): string {
+    return $value === null ? 'À renseigner' : number_format(round($value), 0, ',', ' ') . ' FCFA';
+}
 function url(string $path = ''): string { global $config; return rtrim((string) ($config['base_url'] ?? ''), '/') . '/' . ltrim($path, '/'); }
 function redirect(string $path): never { header('Location: ' . url($path)); exit; }
 
@@ -61,7 +89,10 @@ function flash(string $key, ?string $message = null): ?string {
     $value = $_SESSION['flash'][$key] ?? null; unset($_SESSION['flash'][$key]); return $value;
 }
 function is_admin(): bool { return isset($_SESSION['admin_identity'], $_SESSION['admin_expires']) && $_SESSION['admin_expires'] > time(); }
-function require_admin(): void { if (!is_admin()) redirect('/admin/login.php'); }
+function require_admin(): void {
+    if (!is_admin()) redirect('/admin/login.php');
+    clear_placeholder_initial_costs();
+}
 function admin_identity(): string { return (string) ($_SESSION['admin_identity'] ?? ''); }
 function admin_login(string $username, string $password): bool {
     global $config;

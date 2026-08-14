@@ -7,6 +7,24 @@ $summary = $pdo->prepare("SELECT COALESCE(SUM(quantity * unit_price_fcfa),0) rev
 $summary->execute([$start, $end]); $summary = $summary->fetch();
 $margin = $pdo->prepare("SELECT COALESCE(SUM(o.quantity * (o.unit_price_fcfa - COALESCE(costs.unit_cost,0))),0) value FROM orders o LEFT JOIN (SELECT product_id, SUM(COALESCE(purchase_price_fcfa,0)+COALESCE(transit_price_fcfa,0))/NULLIF(SUM(CASE WHEN movement_type='Réassort' THEN quantity ELSE 0 END),0) unit_cost FROM stock_movements WHERE movement_type='Réassort' GROUP BY product_id) costs ON costs.product_id=o.product_id WHERE o.status='Livrée' AND DATE(o.created_at) BETWEEN ? AND ?");
 $margin->execute([$start, $end]); $margin = (float) ($margin->fetchColumn() ?: 0);
+$marginStatement = $pdo->prepare("
+    SELECT
+        COALESCE(SUM(o.quantity * (o.unit_price_fcfa - costs.unit_cost)), 0) AS value,
+        COALESCE(SUM(CASE WHEN costs.unit_cost IS NULL THEN o.quantity ELSE 0 END), 0) AS unknown_units
+    FROM orders o
+    LEFT JOIN (
+        SELECT
+            product_id,
+            SUM(purchase_price_fcfa + COALESCE(transit_price_fcfa, 0)) / NULLIF(SUM(quantity), 0) AS unit_cost
+        FROM stock_movements
+        WHERE movement_type = 'Réassort' AND purchase_price_fcfa IS NOT NULL
+        GROUP BY product_id
+    ) costs ON costs.product_id = o.product_id
+    WHERE o.status = 'Livrée' AND DATE(o.created_at) BETWEEN ? AND ?
+");
+$marginStatement->execute([$start, $end]);
+$marginData = $marginStatement->fetch();
+$margin = (int) $marginData['unknown_units'] > 0 ? null : (float) $marginData['value'];
 $channels = $pdo->prepare("SELECT COALESCE(acquisition_channel,'À renseigner') channel, COUNT(DISTINCT order_ref) orders, COALESCE(SUM(quantity*unit_price_fcfa),0) revenue FROM orders WHERE status <> 'À confirmer' AND DATE(created_at) BETWEEN ? AND ? GROUP BY acquisition_channel"); $channels->execute([$start,$end]); $channels=$channels->fetchAll();
 $ads = $pdo->prepare("SELECT COALESCE(SUM(amount_fcfa),0) FROM ad_costs WHERE start_date <= ? AND end_date >= ?"); $ads->execute([$end,$start]); $adSpend=(float)$ads->fetchColumn();
 $stock = $pdo->query("SELECT p.id,p.name,p.slug,p.price_fcfa,COALESCE(SUM(sm.quantity),0) quantity,COALESCE((SELECT SUM(COALESCE(s2.purchase_price_fcfa,0)+COALESCE(s2.transit_price_fcfa,0))/NULLIF(SUM(s2.quantity),0) FROM stock_movements s2 WHERE s2.product_id=p.id AND s2.movement_type='Réassort'),0) unit_cost FROM products p LEFT JOIN stock_movements sm ON sm.product_id=p.id GROUP BY p.id ORDER BY p.id")->fetchAll();
