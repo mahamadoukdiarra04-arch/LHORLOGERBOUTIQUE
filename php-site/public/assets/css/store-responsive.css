@@ -1,0 +1,159 @@
+/* Renforts mobiles de la boutique publique. */
+html,
+body {
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+img {
+  max-width: 100%;
+}
+
+@media (max-width: 850px) {
+  .product-page {
+    padding-top: 28px;
+  }
+
+  .product-info {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .product-info > .eyebrow { order: 0; }
+  .product-info > h1 { order: 1; }
+  .product-info > .price { order: 2; }
+  .product-info > .product-description { order: 4; }
+  .product-info > .product-specs { order: 5; }
+  .product-info form { display: contents; }
+
+  .product-info .variant-list {
+    order: 3;
+    margin: 14px 0 20px;
+  }
+
+  .product-info .button {
+    order: 6;
+    width: 100%;
+    margin-top: 2px;
+  }
+}
+
+@media (max-width: 560px) {
+  .notice {
+    padding: 9px 12px;
+    font-size: 9px;
+    letter-spacing: .06em;
+  }
+
+  .store-header {
+    gap: 10px;
+  }
+
+  .store-header nav {
+    flex-shrink: 0;
+    gap: 10px;
+  }
+
+  .store-header nav a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 38px;
+    white-space: nowrap;
+  }
+
+  .container {
+    width: calc(100% - 32px);
+  }
+
+  .product-page {
+    padding: 24px 0 56px;
+  }
+
+  .gallery-main img {
+    height: min(112vw, 440px);
+  }
+
+  .gallery-thumbs {
+    padding-bottom: 2px;
+  }
+
+  .product-info .price {
+    margin: 15px 0;
+  }
+
+  .variant-choice {
+    grid-template-columns: 50px minmax(0, 1fr);
+    min-height: 60px;
+    gap: 10px;
+  }
+
+  .variant-choice img {
+    width: 50px;
+    height: 46px;
+  }
+
+  .variant-choice span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .benefit-row {
+    margin: 38px 0;
+  }
+
+  .catalog-filter {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .catalog-filter a {
+    display: grid;
+    min-width: 0;
+    min-height: 40px;
+    place-items: center;
+    padding: 8px;
+    text-align: center;
+  }
+
+  .product-card__meta {
+    flex-wrap: wrap;
+  }
+
+  .checkout-layout {
+    gap: 28px;
+  }
+
+  .checkout-summary {
+    padding: 20px;
+  }
+
+  .checkout-summary__line,
+  .checkout-summary__total {
+    align-items: flex-start;
+  }
+
+  .checkout-summary__line span,
+  .checkout-summary__total span {
+    min-width: 0;
+  }
+
+  .checkout-summary__line strong,
+  .checkout-summary__total strong {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 360px) {
+  .store-header .brand {
+    font-size: 17px;
+  }
+
+  .store-header nav {
+    gap: 8px;
+    font-size: 9px;
+  }
+}
