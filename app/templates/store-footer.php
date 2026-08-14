@@ -1,1 +1,1 @@
-<footer class="store-footer"><div class="brand">L’HORLOGER</div><p>Le temps vous va si bien.</p><a href="<?= e(url('/admin/login.php')) ?>">Administration</a></footer><script src="<?= e(url('/assets/js/store.js')) ?>"></script></body></html>
+<footer class="store-footer"><div class="brand">L’HORLOGER</div><p>Le temps vous va si bien.</p></footer><script src="<?= e(url('/assets/js/store.js')) ?>"></script></body></html>
