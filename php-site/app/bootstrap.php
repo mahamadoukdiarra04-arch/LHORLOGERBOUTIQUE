@@ -42,23 +42,21 @@ function db(): PDO {
 }
 
 /**
- * The first version of the admin was populated with indicative purchase and
- * transit amounts. Keep the opening stock, but never present those placeholders
- * as real costs.
+ * The first version of the admin included opening movements for demonstration.
+ * They are not business data and must never be counted as real inventory.
  */
-function clear_placeholder_initial_costs(): void {
+function remove_placeholder_initial_stock(): void {
     static $completed = false;
     if ($completed) return;
     $completed = true;
 
     try {
         $statement = db()->prepare(
-            'UPDATE stock_movements
-             SET purchase_price_fcfa = NULL, transit_price_fcfa = NULL, unit_cost_fcfa = NULL
+            'DELETE FROM stock_movements
              WHERE note = ? AND actor = ? AND (
-                 (product_id = 1 AND quantity = 18 AND purchase_price_fcfa = 468000 AND transit_price_fcfa = 81000)
-                 OR (product_id = 2 AND quantity = 8 AND purchase_price_fcfa = 272000 AND transit_price_fcfa = 36800)
-                 OR (product_id = 3 AND quantity = 4 AND purchase_price_fcfa = 128000 AND transit_price_fcfa = 16800)
+                 (product_id = 1 AND quantity = 18)
+                 OR (product_id = 2 AND quantity = 8)
+                 OR (product_id = 3 AND quantity = 4)
              )'
         );
         $statement->execute(['Stock initial', 'Système']);
@@ -91,7 +89,7 @@ function flash(string $key, ?string $message = null): ?string {
 function is_admin(): bool { return isset($_SESSION['admin_identity'], $_SESSION['admin_expires']) && $_SESSION['admin_expires'] > time(); }
 function require_admin(): void {
     if (!is_admin()) redirect('/admin/login.php');
-    clear_placeholder_initial_costs();
+    remove_placeholder_initial_stock();
 }
 function admin_identity(): string { return (string) ($_SESSION['admin_identity'] ?? ''); }
 function admin_login(string $username, string $password): bool {
