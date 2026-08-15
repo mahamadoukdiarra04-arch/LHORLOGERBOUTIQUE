@@ -47,10 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $pdo->commit();
             $_SESSION['latest_order_ref'] = $ref; $_SESSION['latest_first_name'] = $first;
-            redirect('/order-success.php?' . http_build_query([
-                'ref' => $ref,
-                'token' => order_success_token($ref),
-            ]));
+            redirect('/order-success.php?ref=' . rawurlencode($ref));
         } catch (Throwable $exception) {
             if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
             flash('error', 'La commande ne peut pas être enregistrée pour le moment. Réessayez dans quelques instants.');

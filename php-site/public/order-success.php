@@ -3,14 +3,18 @@ require __DIR__ . '/../app/bootstrap.php';
 
 $sessionReference = (string) ($_SESSION['latest_order_ref'] ?? '');
 $queryReference = trim((string) ($_GET['ref'] ?? ''));
-$queryToken = (string) ($_GET['token'] ?? '');
-$hasValidSignedReference = preg_match('/^HOR-\d{6}-\d{6}$/', $queryReference)
-    && hash_equals(order_success_token($queryReference), $queryToken);
 
 if ($sessionReference !== '') {
     $reference = $sessionReference;
-} elseif ($hasValidSignedReference) {
-    $reference = $queryReference;
+} elseif (preg_match('/^HOR-\d{6}-\d{6}$/', $queryReference)) {
+    try {
+        $orderStatement = db()->prepare('SELECT 1 FROM orders WHERE order_ref = ? LIMIT 1');
+        $orderStatement->execute([$queryReference]);
+        if (!$orderStatement->fetchColumn()) redirect('/');
+        $reference = $queryReference;
+    } catch (Throwable) {
+        redirect('/');
+    }
 } else {
     redirect('/');
 }

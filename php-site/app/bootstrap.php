@@ -70,10 +70,6 @@ function money(float|int|null $value): string {
     return $value === null ? 'À renseigner' : number_format(round($value), 0, ',', ' ') . ' FCFA';
 }
 function url(string $path = ''): string { global $config; return rtrim((string) ($config['base_url'] ?? ''), '/') . '/' . ltrim($path, '/'); }
-function order_success_token(string $reference): string {
-    global $config;
-    return hash_hmac('sha256', $reference, (string) $config['app_key']);
-}
 function redirect(string $path): never { header('Location: ' . url($path)); exit; }
 
 function csrf_token(): string {
