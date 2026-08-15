@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 function catalog(): array {
-    return [
+    $products = [
         'nocturne-chrono' => [
             'sku' => 'T-01', 'name' => 'Nocturne Chrono', 'price' => 52000, 'bracelet' => 'Cuir brun', 'finish' => 'Noir & or', 'size' => '46 mm',
             'image' => 'products/nocturne-chrono.jpg', 'description' => 'Un cadran noir profond, des détails dorés et un bracelet cuir qui donne immédiatement de la tenue.',
@@ -31,5 +31,22 @@ function catalog(): array {
             'features' => [['La lune au centre du regard', 'La phase de lune anime le haut du cadran et donne au modèle sa profondeur singulière.'], ['Une mécanique à contempler', 'L’ouverture à 8 heures et le fond transparent laissent voir le mouvement.'], ['Une montre complète', 'Jour, date, mois, repères lumineux et bracelet cuir véritable, sans alourdir la ligne.']],
         ],
     ];
+
+    // The content of the product pages remains curated here, while the selling
+    // price is controlled from the administration panel.
+    if (function_exists('db')) {
+        try {
+            $prices = db()->query('SELECT slug, price_fcfa FROM products')->fetchAll(PDO::FETCH_KEY_PAIR);
+            foreach ($prices as $slug => $price) {
+                if (isset($products[$slug]) && (int) $price > 0) {
+                    $products[$slug]['price'] = (int) $price;
+                }
+            }
+        } catch (Throwable) {
+            // Keep the published catalogue available if the database is temporarily unavailable.
+        }
+    }
+
+    return $products;
 }
 function product_by_slug(string $slug): ?array { $all = catalog(); return $all[$slug] ?? null; }
