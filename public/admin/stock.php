@@ -77,6 +77,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $insert->execute([$productId, $start, $end, $amount, admin_identity()]);
             log_event('publicité', 'Coût Meta · ' . $productName . ' · ' . money($amount), $productId);
             flash('success', 'Coût publicitaire enregistré.');
+        } elseif ($action === 'sale_price') {
+            $salePrice = (int) ($_POST['sale_price'] ?? 0);
+            if ($salePrice < 1) {
+                throw new RuntimeException('Indiquez un prix de vente valide.');
+            }
+
+            $update = $pdo->prepare('UPDATE products SET price_fcfa = ? WHERE id = ?');
+            $update->execute([$salePrice, $productId]);
+            log_event('prix', 'Prix de vente · ' . $productName . ' · ' . money($salePrice), $productId);
+            flash('success', 'Prix de vente mis à jour.');
         }
     } catch (Throwable $exception) {
         flash('error', $exception->getMessage());
@@ -146,6 +156,7 @@ require APP_ROOT . '/templates/admin-header.php';
       <p><?= e($item['name']) ?></p>
       <div class="quantity"><?= (int) $item['quantity'] ?></div>
       <p>unités disponibles · seuil : 6</p>
+      <p>Prix de vente · <?= e(money((int) $item['price_fcfa'])) ?></p>
       <strong><?= $unitCost !== null ? e(money($unitCost) . ' / unité') : 'Coût à renseigner' ?></strong>
       <p><?= $low ? 'À réassortir' : 'Stock suivi' ?></p>
     </a>
@@ -195,6 +206,23 @@ require APP_ROOT . '/templates/admin-header.php';
       </form>
       <p style="color:#60718a;font-size:12px">Le CAC se calcule avec les ventes de ce produit sur la même période.</p>
     </article>
+  </section>
+
+  <section class="admin-panel" style="margin-top:15px">
+    <p class="admin-kicker">Prix de vente · <?= e($selectedItem['name']) ?></p>
+    <h2>Mettre à jour le prix.</h2>
+    <form class="data-form" method="post">
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="sale_price">
+      <input type="hidden" name="product_id" value="<?= (int) $selectedItem['id'] ?>">
+      <label>Prix de vente (FCFA)
+        <input type="number" name="sale_price" min="1" value="<?= (int) $selectedItem['price_fcfa'] ?>" required>
+      </label>
+      <button class="admin-button">Enregistrer le prix</button>
+    </form>
+    <p style="color:#60718a;font-size:12px">
+      Le nouveau prix est appliqué à la boutique, au panier et aux futures commandes. Les commandes existantes gardent leur prix d’origine.
+    </p>
   </section>
 
   <section class="admin-panel" style="margin-top:15px">
