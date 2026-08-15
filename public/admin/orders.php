@@ -1,18 +1,97 @@
 <?php
-require __DIR__ . '/../../app/bootstrap.php'; require_admin(); $pdo=db();
-if ($_SERVER['REQUEST_METHOD']==='POST') {
-    verify_csrf(); $orderId=(int)($_POST['order_id']??0); $status=(string)($_POST['status']??''); $channel=(string)($_POST['channel']??'');
-    $allowed=['À confirmer','Confirmée','En livraison','Livrée','Annulée']; $channels=['Meta','Réachat'];
-    $fetch=$pdo->prepare('SELECT * FROM orders WHERE id=?'); $fetch->execute([$orderId]); $order=$fetch->fetch();
-    if (!$order || !in_array($status,$allowed,true)) flash('error','Mise à jour impossible.');
-    elseif ($status!=='À confirmer' && !in_array($channel,$channels,true)) flash('error','Choisissez Meta ou Réachat avant de quitter « À confirmer ».');
-    else {
-        try { $pdo->beginTransaction();
-            if ($status==='Livrée' && !$order['stock_processed']) { $available=$pdo->prepare('SELECT COALESCE(SUM(quantity),0) FROM stock_movements WHERE product_id=?'); $available->execute([$order['product_id']]); if ((int)$available->fetchColumn() < (int)$order['quantity']) throw new RuntimeException('Stock insuffisant pour livrer cette commande.'); $out=$pdo->prepare("INSERT INTO stock_movements (product_id,movement_type,quantity,note,actor) VALUES (?, 'Sortie', ?, ?, ?)"); $out->execute([$order['product_id'], -(int)$order['quantity'], 'Sortie liée à '.$order['order_ref'], admin_identity()]); }
-            $update=$pdo->prepare('UPDATE orders SET status=?, acquisition_channel=?, stock_processed=CASE WHEN ?=\'Livrée\' THEN 1 ELSE stock_processed END WHERE id=?'); $update->execute([$status,$status==='À confirmer'?null:$channel,$status,$orderId]);
-            log_event('commande','Commande '.$order['order_ref'].' mise à jour : '.$status,(int)$order['product_id'],$orderId); $pdo->commit(); flash('success','Commande mise à jour.');
-        } catch(Throwable $e) { if($pdo->inTransaction())$pdo->rollBack(); flash('error',$e->getMessage()==='Stock insuffisant pour livrer cette commande.'?$e->getMessage():'La commande n’a pas pu être mise à jour.'); }
-    } redirect('/admin/orders.php?order='.$orderId);
+require __DIR__ . '/../../app/bootstrap.php';
+require_admin();
+$pdo = db();
+
+/**
+ * Early database installations did not yet have stock_processed. Updating a
+ * non-delivered order must remain possible while keeping stock deductions safe.
+ */
+function order_stock_tracking_available(PDO $pdo): bool {
+    static $available = null;
+    if ($available !== null) return $available;
+
+    try {
+        $available = (bool) $pdo->query("SHOW COLUMNS FROM orders LIKE 'stock_processed'")->fetch();
+    } catch (Throwable $exception) {
+        error_log('L’Horloger: impossible de vérifier le suivi de stock des commandes.');
+        $available = false;
+    }
+
+    return $available;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
+    $orderId = (int) ($_POST['order_id'] ?? 0);
+    $status = (string) ($_POST['status'] ?? '');
+    $channel = (string) ($_POST['channel'] ?? '');
+    $allowed = ['À confirmer', 'Confirmée', 'En livraison', 'Livrée', 'Annulée'];
+    $channels = ['Meta', 'Réachat'];
+
+    if ($orderId < 1 || !in_array($status, $allowed, true)) {
+        flash('error', 'Mise à jour impossible.');
+    } elseif ($status !== 'À confirmer' && !in_array($channel, $channels, true)) {
+        flash('error', 'Choisissez Meta ou Réachat avant de quitter « À confirmer ».');
+    } else {
+        try {
+            $pdo->beginTransaction();
+            $fetch = $pdo->prepare('SELECT * FROM orders WHERE id = ? FOR UPDATE');
+            $fetch->execute([$orderId]);
+            $order = $fetch->fetch();
+
+            if (!$order) throw new RuntimeException('Commande introuvable.');
+
+            $hasStockTracking = order_stock_tracking_available($pdo);
+            $stockAlreadyProcessed = $hasStockTracking && (int) ($order['stock_processed'] ?? 0) === 1;
+
+            if ($status === 'Livrée' && !$hasStockTracking) {
+                throw new RuntimeException('Le suivi de stock doit être initialisé avant de livrer une commande.');
+            }
+
+            if ($status === 'Livrée' && !$stockAlreadyProcessed) {
+                $available = $pdo->prepare('SELECT COALESCE(SUM(quantity), 0) FROM stock_movements WHERE product_id = ?');
+                $available->execute([$order['product_id']]);
+                if ((int) $available->fetchColumn() < (int) $order['quantity']) {
+                    throw new RuntimeException('Stock insuffisant pour livrer cette commande.');
+                }
+
+                $out = $pdo->prepare("INSERT INTO stock_movements (product_id, movement_type, quantity, note, actor) VALUES (?, 'Sortie', ?, ?, ?)");
+                $out->execute([$order['product_id'], -(int) $order['quantity'], 'Sortie liée à ' . $order['order_ref'], admin_identity()]);
+            }
+
+            if ($hasStockTracking) {
+                $processed = $stockAlreadyProcessed || $status === 'Livrée' ? 1 : 0;
+                $update = $pdo->prepare('UPDATE orders SET status = ?, acquisition_channel = ?, stock_processed = ? WHERE id = ?');
+                $update->execute([$status, $status === 'À confirmer' ? null : $channel, $processed, $orderId]);
+            } else {
+                $update = $pdo->prepare('UPDATE orders SET status = ?, acquisition_channel = ? WHERE id = ?');
+                $update->execute([$status, $status === 'À confirmer' ? null : $channel, $orderId]);
+            }
+
+            $pdo->commit();
+
+            // Event history is useful but must never cancel an already saved order update.
+            try {
+                log_event('commande', 'Commande ' . $order['order_ref'] . ' mise à jour : ' . $status, (int) $order['product_id'], $orderId);
+            } catch (Throwable $exception) {
+                error_log('L’Horloger: historique de commande non enregistré après une mise à jour.');
+            }
+
+            flash('success', 'Commande mise à jour.');
+        } catch (Throwable $exception) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            $messages = [
+                'Stock insuffisant pour livrer cette commande.',
+                'Commande introuvable.',
+                'Le suivi de stock doit être initialisé avant de livrer une commande.',
+            ];
+            flash('error', in_array($exception->getMessage(), $messages, true) ? $exception->getMessage() : 'La mise à jour a échoué. Réessayez dans quelques instants.');
+            error_log('L’Horloger: mise à jour de commande échouée.');
+        }
+    }
+
+    redirect('/admin/orders.php?order=' . $orderId);
 }
 $statusFilter=(string)($_GET['status']??''); $search=trim((string)($_GET['q']??'')); $selected=(int)($_GET['order']??0);
 $where=[];$params=[]; if(in_array($statusFilter,['À confirmer','Confirmée','En livraison','Livrée','Annulée'],true)){$where[]='o.status=?';$params[]=$statusFilter;} if($search!==''){$where[]='CONCAT(o.order_ref," ",o.customer_first_name," ",o.customer_last_name," ",o.phone," ",o.district," ",o.product_name," ",o.variant) LIKE ?';$params[]='%'.$search.'%';}
