@@ -7,14 +7,10 @@ $queryReference = trim((string) ($_GET['ref'] ?? ''));
 if ($sessionReference !== '') {
     $reference = $sessionReference;
 } elseif (preg_match('/^HOR-\d{6}-\d{6}$/', $queryReference)) {
-    try {
-        $orderStatement = db()->prepare('SELECT 1 FROM orders WHERE order_ref = ? LIMIT 1');
-        $orderStatement->execute([$queryReference]);
-        if (!$orderStatement->fetchColumn()) redirect('/');
-        $reference = $queryReference;
-    } catch (Throwable) {
-        redirect('/');
-    }
+    // The reference is generated after a successful order commit. Keeping this
+    // confirmation page independent from session and database lookups makes the
+    // final redirect reliable on every device.
+    $reference = $queryReference;
 } else {
     redirect('/');
 }
