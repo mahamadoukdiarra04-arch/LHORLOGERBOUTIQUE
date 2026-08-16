@@ -13,7 +13,7 @@
   <meta name="theme-color" content="#11100f">
   <link rel="stylesheet" href="<?= e(url('/assets/css/app.css')) ?>">
   <link rel="stylesheet" href="<?= e(url('/assets/css/brand.css')) ?>">
-  <link rel="stylesheet" href="<?= e(url('/assets/css/store-responsive.css')) ?>">
+  <link rel="stylesheet" href="<?= e(url('/assets/css/store-responsive.css')) ?>?v=20260816-colors">
   <!-- Meta Pixel Code -->
   <script>
     !function(f,b,e,v,n,t,s)
