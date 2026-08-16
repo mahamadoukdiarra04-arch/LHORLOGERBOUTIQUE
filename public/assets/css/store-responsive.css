@@ -9,6 +9,24 @@ img {
   max-width: 100%;
 }
 
+.variant-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 9px;
+}
+
+.variant-list > .eyebrow {
+  grid-column: 1 / -1;
+}
+
+.variant-choice {
+  min-width: 0;
+}
+
+.variant-choice span {
+  min-width: 0;
+  line-height: 1.25;
+}
+
 @media (max-width: 850px) {
   .product-page {
     padding-top: 28px;
@@ -93,10 +111,9 @@ img {
   }
 
   .variant-choice span {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
   }
 
   .benefit-row {
