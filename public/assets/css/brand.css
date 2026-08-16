@@ -1,0 +1,85 @@
+.brand-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.brand-logo img {
+  display: block;
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  object-fit: cover;
+  background: #000;
+}
+
+.brand-logo__wordmark {
+  font-family: Georgia, serif;
+  font-size: 22px;
+  letter-spacing: .1em;
+}
+
+.store-footer .brand-logo img {
+  width: 50px;
+  height: 50px;
+}
+
+.store-footer .brand-logo__wordmark {
+  font-size: 20px;
+}
+
+.admin-top .brand-logo {
+  gap: 8px;
+}
+
+.admin-top .brand-logo img {
+  width: 34px;
+  height: 34px;
+}
+
+.admin-top .brand-logo__wordmark {
+  font-size: 18px;
+}
+
+.admin-top .brand-logo small {
+  margin-left: 2px;
+}
+
+@media (max-width: 560px) {
+  .store-header .brand-logo {
+    gap: 7px;
+  }
+
+  .store-header .brand-logo img {
+    width: 36px;
+    height: 36px;
+  }
+
+  .store-header .brand-logo__wordmark {
+    font-size: 14px;
+    letter-spacing: .08em;
+  }
+
+  .store-footer .brand-logo img {
+    width: 42px;
+    height: 42px;
+  }
+
+  .admin-top .brand-logo img {
+    width: 28px;
+    height: 28px;
+  }
+
+  .admin-top .brand-logo__wordmark {
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 350px) {
+  .store-header .brand-logo__wordmark {
+    display: none;
+  }
+}
