@@ -67,6 +67,36 @@ CREATE TABLE IF NOT EXISTS admin_events (
   INDEX idx_events_product_date (product_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS order_closer_tracking (
+  order_id BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+  closer_identity VARCHAR(50) NOT NULL,
+  follow_up_status VARCHAR(32) NOT NULL DEFAULT 'À appeler',
+  follow_up_at DATETIME NULL,
+  note TEXT NULL,
+  whatsapp_prepared_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_closer_status (closer_identity, follow_up_status),
+  INDEX idx_closer_follow_up (follow_up_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS closer_events (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  order_id BIGINT UNSIGNED NOT NULL,
+  closer_identity VARCHAR(50) NOT NULL,
+  event_type VARCHAR(50) NOT NULL,
+  note VARCHAR(500) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_closer_events_order (order_id, created_at),
+  INDEX idx_closer_events_identity (closer_identity, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS app_settings (
+  setting_key VARCHAR(80) NOT NULL PRIMARY KEY,
+  setting_value VARCHAR(255) NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 INSERT IGNORE INTO products (id, slug, sku, name, price_fcfa) VALUES
   (1, 'nocturne-chrono', 'T-01', 'Nocturne Chrono', 52000),
   (2, 'azur-squelette', 'T-02', 'Azur Squelette', 62000),

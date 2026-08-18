@@ -1,6 +1,6 @@
 <?php
 require __DIR__ . '/../../app/bootstrap.php';
-require_admin();
+require_manager();
 [$periodKey, $periodLabel, $start, $end] = allowed_period();
 $pdo = db();
 $summary = $pdo->prepare("SELECT COALESCE(SUM(quantity * unit_price_fcfa),0) revenue, COUNT(DISTINCT order_ref) orders, COALESCE(AVG(quantity * unit_price_fcfa),0) average_basket FROM orders WHERE status='Livrée' AND DATE(created_at) BETWEEN ? AND ?");
