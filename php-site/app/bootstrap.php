@@ -87,18 +87,35 @@ function flash(string $key, ?string $message = null): ?string {
     $value = $_SESSION['flash'][$key] ?? null; unset($_SESSION['flash'][$key]); return $value;
 }
 function is_admin(): bool { return isset($_SESSION['admin_identity'], $_SESSION['admin_expires']) && $_SESSION['admin_expires'] > time(); }
+function admin_role(): string { return (string) ($_SESSION['admin_role'] ?? 'manager'); }
+function is_manager(): bool { return is_admin() && admin_role() === 'manager'; }
+function is_closer(): bool { return is_admin() && admin_role() === 'closer'; }
+function admin_landing_path(): string { return is_closer() ? '/closer/' : '/admin/'; }
 function require_admin(): void {
     if (!is_admin()) redirect('/admin/login.php');
     remove_placeholder_initial_stock();
+}
+function require_manager(): void {
+    require_admin();
+    if (!is_manager()) redirect('/closer/');
+}
+function require_closer(): void {
+    require_admin();
+    if (!is_closer()) redirect('/admin/closer.php');
 }
 function admin_identity(): string { return (string) ($_SESSION['admin_identity'] ?? ''); }
 function admin_login(string $username, string $password): bool {
     global $config;
     $identity = strtoupper(trim($username));
-    $hash = $config['admin_users'][$identity] ?? null;
+    $entry = $config['admin_users'][$identity] ?? null;
+    // Legacy password-hash entries remain managers. Newer entries carry a role.
+    $hash = is_array($entry) ? ($entry['password_hash'] ?? $entry['hash'] ?? null) : $entry;
+    $role = is_array($entry) ? (string) ($entry['role'] ?? 'manager') : 'manager';
+    if (!in_array($role, ['manager', 'closer'], true)) return false;
     if (!is_string($hash) || !password_verify($password, $hash)) return false;
     session_regenerate_id(true);
     $_SESSION['admin_identity'] = $identity;
+    $_SESSION['admin_role'] = $role;
     $_SESSION['admin_expires'] = time() + 12 * 60 * 60;
     return true;
 }
@@ -126,4 +143,63 @@ function allowed_period(): array {
 function log_event(string $type, string $message, ?int $productId = null, ?int $orderId = null): void {
     $stmt = db()->prepare('INSERT INTO admin_events (event_type, message, product_id, order_id, actor) VALUES (?, ?, ?, ?, ?)');
     $stmt->execute([$type, $message, $productId, $orderId, admin_identity() ?: null]);
+}
+function ensure_closer_schema(): void {
+    static $ready = false;
+    if ($ready) return;
+
+    $pdo = db();
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS order_closer_tracking (
+            order_id BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+            closer_identity VARCHAR(50) NOT NULL,
+            follow_up_status VARCHAR(32) NOT NULL DEFAULT 'À appeler',
+            follow_up_at DATETIME NULL,
+            note TEXT NULL,
+            whatsapp_prepared_at DATETIME NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_closer_status (closer_identity, follow_up_status),
+            INDEX idx_closer_follow_up (follow_up_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    );
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS closer_events (
+            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            order_id BIGINT UNSIGNED NOT NULL,
+            closer_identity VARCHAR(50) NOT NULL,
+            event_type VARCHAR(50) NOT NULL,
+            note VARCHAR(500) NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_closer_events_order (order_id, created_at),
+            INDEX idx_closer_events_identity (closer_identity, created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    );
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS app_settings (
+            setting_key VARCHAR(80) NOT NULL PRIMARY KEY,
+            setting_value VARCHAR(255) NULL,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    );
+    $ready = true;
+}
+function app_setting(string $key, ?string $default = null): ?string {
+    $statement = db()->prepare('SELECT setting_value FROM app_settings WHERE setting_key = ?');
+    $statement->execute([$key]);
+    $value = $statement->fetchColumn();
+    return $value === false ? $default : (string) $value;
+}
+function save_app_setting(string $key, string $value): void {
+    $statement = db()->prepare(
+        'INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?)
+         ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)'
+    );
+    $statement->execute([$key, $value]);
+}
+function log_closer_event(int $orderId, string $type, ?string $note = null): void {
+    $statement = db()->prepare(
+        'INSERT INTO closer_events (order_id, closer_identity, event_type, note) VALUES (?, ?, ?, ?)'
+    );
+    $statement->execute([$orderId, admin_identity(), $type, $note]);
 }

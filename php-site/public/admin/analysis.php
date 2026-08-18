@@ -1,6 +1,6 @@
 <?php
 require __DIR__ . '/../../app/bootstrap.php';
-require_admin();
+require_manager();
 
 [$periodKey, $periodLabel, $start, $end] = allowed_period();
 $pdo = db();

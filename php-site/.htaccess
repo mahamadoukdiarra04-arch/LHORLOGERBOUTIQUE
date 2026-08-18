@@ -14,6 +14,7 @@ RewriteRule ^uploads/(.*)$ public/uploads/$1 [L]
 RewriteRule ^products/(.*)$ public/products/$1 [L]
 RewriteRule ^(favicon(?:-(?:48|192))?\.(?:png|ico))$ public/$1 [L]
 RewriteRule ^admin/?(.*)$ public/admin/$1 [L]
+RewriteRule ^closer/?(.*)$ public/closer/$1 [L]
 RewriteRule ^(catalog|product|cart|checkout|thank-you|order-success)\.php$ public/$1.php [L]
 
 # Route all storefront paths through the public front controller.

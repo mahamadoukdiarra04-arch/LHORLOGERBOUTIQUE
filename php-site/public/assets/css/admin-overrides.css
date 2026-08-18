@@ -26,6 +26,12 @@
   min-inline-size: 0;
 }
 
+.admin-copy { color: #60718a; line-height: 1.55; }
+.closer-admin-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.closer-admin-metrics .metric { min-width: 0; }
+.closer-admin-table small { overflow-wrap: anywhere; }
+.admin-table-empty { padding: 28px 14px; color: #60718a; text-align: center; }
+
 @media (max-width: 560px) {
   .data-form {
     grid-template-columns: minmax(0, 1fr);
@@ -34,4 +40,6 @@
   .data-form .wide {
     grid-column: auto;
   }
+
+  .closer-admin-metrics { grid-template-columns: 1fr; }
 }

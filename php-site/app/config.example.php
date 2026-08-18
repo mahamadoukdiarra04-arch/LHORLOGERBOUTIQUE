@@ -11,10 +11,12 @@ return [
         'password' => 'CHANGE_ME',
         'charset' => 'utf8mb4',
     ],
-    // Generate each value with password_hash('a-strong-password', PASSWORD_DEFAULT).
+    // Existing string password hashes remain valid as manager accounts.
+    // Add the closeuse account with role "closer" when she joins the team.
     'admin_users' => [
-        'MKD' => 'PASTE_A_PASSWORD_HASH_HERE',
-        'ICE' => 'PASTE_A_PASSWORD_HASH_HERE',
+        'MKD' => ['password_hash' => 'PASTE_A_PASSWORD_HASH_HERE', 'role' => 'manager'],
+        'ICE' => ['password_hash' => 'PASTE_A_PASSWORD_HASH_HERE', 'role' => 'manager'],
+        'CLOSEUSE' => ['password_hash' => 'PASTE_A_PASSWORD_HASH_HERE', 'role' => 'closer'],
     ],
     'app_key' => 'REPLACE_WITH_A_RANDOM_64_CHARACTER_SECRET',
     'base_url' => '',
