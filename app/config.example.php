@@ -11,12 +11,11 @@ return [
         'password' => 'CHANGE_ME',
         'charset' => 'utf8mb4',
     ],
-    // Existing string password hashes remain valid as manager accounts.
-    // Add the closeuse account with role "closer" when she joins the team.
+    // These initial accounts are imported once into the database. Manage all
+    // subsequent access from Administration > Utilisateurs.
     'admin_users' => [
         'MKD' => ['password_hash' => 'PASTE_A_PASSWORD_HASH_HERE', 'role' => 'manager'],
         'ICE' => ['password_hash' => 'PASTE_A_PASSWORD_HASH_HERE', 'role' => 'manager'],
-        'CLOSEUSE' => ['password_hash' => 'PASTE_A_PASSWORD_HASH_HERE', 'role' => 'closer'],
     ],
     'app_key' => 'REPLACE_WITH_A_RANDOM_64_CHARACTER_SECRET',
     'base_url' => '',

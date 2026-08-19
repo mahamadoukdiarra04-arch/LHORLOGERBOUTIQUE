@@ -2,14 +2,7 @@
 
 L’espace de travail de la closeuse est disponible à l’URL `/closer/`. Il est séparé de l’administration de gestion (`/admin/`).
 
-Pour créer son accès, ajoutez une entrée avec le rôle `closer` dans `app/config.php` :
-
-```php
-'IDENTIFIANT_CLOSEUSE' => [
-    'password_hash' => password_hash('MOT_DE_PASSE_A_CHOISIR', PASSWORD_DEFAULT),
-    'role' => 'closer',
-],
-```
+Un gestionnaire crée son accès depuis **Administration → Utilisateurs**. Il renseigne un identifiant, un mot de passe et le rôle **Closeuse**. Le même écran permet de modifier le compte ou de le suspendre sans toucher aux fichiers du site.
 
 Elle pourra alors prendre une commande dans son suivi, noter le résultat de l’appel, confirmer avec le canal Meta ou Réachat, préparer un message WhatsApp pour le livreur et télécharger son bordereau PDF.
 

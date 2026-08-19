@@ -86,7 +86,75 @@ function flash(string $key, ?string $message = null): ?string {
     if ($message !== null) { $_SESSION['flash'][$key] = $message; return null; }
     $value = $_SESSION['flash'][$key] ?? null; unset($_SESSION['flash'][$key]); return $value;
 }
-function is_admin(): bool { return isset($_SESSION['admin_identity'], $_SESSION['admin_expires']) && $_SESSION['admin_expires'] > time(); }
+function configured_admin_users(): array {
+    global $config;
+    $users = [];
+    foreach ((array) ($config['admin_users'] ?? []) as $username => $entry) {
+        $identity = strtoupper(trim((string) $username));
+        $hash = is_array($entry) ? ($entry['password_hash'] ?? $entry['hash'] ?? null) : $entry;
+        $role = is_array($entry) ? (string) ($entry['role'] ?? 'manager') : 'manager';
+        if ($identity !== '' && is_string($hash) && in_array($role, ['manager', 'closer'], true)) {
+            $users[$identity] = ['password_hash' => $hash, 'role' => $role];
+        }
+    }
+    return $users;
+}
+function ensure_admin_users_schema(): void {
+    static $ready = false;
+    if ($ready) return;
+    $pdo = db();
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS admin_users (
+            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            username VARCHAR(50) NOT NULL UNIQUE,
+            password_hash VARCHAR(255) NOT NULL,
+            role ENUM('manager','closer') NOT NULL DEFAULT 'manager',
+            is_active TINYINT(1) NOT NULL DEFAULT 1,
+            created_by VARCHAR(50) NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_admin_users_active (is_active, role)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    );
+    $seed = $pdo->prepare(
+        'INSERT IGNORE INTO admin_users (username, password_hash, role, is_active, created_by) VALUES (?, ?, ?, 1, ?)'
+    );
+    foreach (configured_admin_users() as $username => $user) {
+        $seed->execute([$username, $user['password_hash'], $user['role'], 'Configuration']);
+    }
+    $ready = true;
+}
+function admin_session_is_active(): bool {
+    static $checked = null;
+    if ($checked !== null) return $checked;
+    $checked = true;
+    $identity = (string) ($_SESSION['admin_identity'] ?? '');
+    if ($identity === '') return false;
+    try {
+        ensure_admin_users_schema();
+        $userId = (int) ($_SESSION['admin_user_id'] ?? 0);
+        $statement = $userId > 0
+            ? db()->prepare('SELECT id, username, role, is_active FROM admin_users WHERE id = ?')
+            : db()->prepare('SELECT id, username, role, is_active FROM admin_users WHERE username = ?');
+        $statement->execute([$userId > 0 ? $userId : $identity]);
+        $user = $statement->fetch();
+        if (!$user) return $checked = false;
+        if (!(bool) $user['is_active']) return $checked = false;
+        $_SESSION['admin_user_id'] = (int) $user['id'];
+        $_SESSION['admin_identity'] = (string) $user['username'];
+        $_SESSION['admin_role'] = (string) $user['role'];
+    } catch (Throwable) {
+        // A pre-existing configuration account remains usable if MySQL is temporarily unavailable.
+        $legacy = configured_admin_users()[$identity] ?? null;
+        $checked = $legacy !== null;
+    }
+    return $checked;
+}
+function is_admin(): bool {
+    return isset($_SESSION['admin_identity'], $_SESSION['admin_expires'])
+        && $_SESSION['admin_expires'] > time()
+        && admin_session_is_active();
+}
 function admin_role(): string { return (string) ($_SESSION['admin_role'] ?? 'manager'); }
 function is_manager(): bool { return is_admin() && admin_role() === 'manager'; }
 function is_closer(): bool { return is_admin() && admin_role() === 'closer'; }
@@ -105,16 +173,23 @@ function require_closer(): void {
 }
 function admin_identity(): string { return (string) ($_SESSION['admin_identity'] ?? ''); }
 function admin_login(string $username, string $password): bool {
-    global $config;
     $identity = strtoupper(trim($username));
-    $entry = $config['admin_users'][$identity] ?? null;
-    // Legacy password-hash entries remain managers. Newer entries carry a role.
-    $hash = is_array($entry) ? ($entry['password_hash'] ?? $entry['hash'] ?? null) : $entry;
-    $role = is_array($entry) ? (string) ($entry['role'] ?? 'manager') : 'manager';
+    $account = null;
+    try {
+        ensure_admin_users_schema();
+        $statement = db()->prepare('SELECT id, username, password_hash, role, is_active FROM admin_users WHERE username = ? LIMIT 1');
+        $statement->execute([$identity]);
+        $account = $statement->fetch();
+    } catch (Throwable) {
+        $legacy = configured_admin_users()[$identity] ?? null;
+        if ($legacy) $account = ['id' => null, 'username' => $identity, 'password_hash' => $legacy['password_hash'], 'role' => $legacy['role'], 'is_active' => 1];
+    }
+    if (!$account || !(bool) $account['is_active'] || !password_verify($password, (string) $account['password_hash'])) return false;
+    $role = (string) $account['role'];
     if (!in_array($role, ['manager', 'closer'], true)) return false;
-    if (!is_string($hash) || !password_verify($password, $hash)) return false;
     session_regenerate_id(true);
-    $_SESSION['admin_identity'] = $identity;
+    $_SESSION['admin_user_id'] = $account['id'] !== null ? (int) $account['id'] : null;
+    $_SESSION['admin_identity'] = (string) $account['username'];
     $_SESSION['admin_role'] = $role;
     $_SESSION['admin_expires'] = time() + 12 * 60 * 60;
     return true;
