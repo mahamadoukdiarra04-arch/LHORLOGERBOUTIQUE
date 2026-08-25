@@ -91,6 +91,25 @@ accounting_test_same([
 ]), 'Les paiements successifs respectent le reliquat de chaque ligne.');
 accounting_test_throws(static fn () => accounting_allocate_delivery_payments($deliveryLines, [['account_id' => 1, 'amount_fcfa' => 114001]]), 'Un encaissement supérieur au total doit être refusé.');
 
+accounting_test_same([
+    0 => [1 => 20070, 2 => 23930],
+    1 => [1 => 31930, 2 => 38070],
+], accounting_allocate_remaining_payments([1 => 52000, 2 => 62000], $deliveryPayments), 'La régularisation respecte le reliquat de chaque ligne sans perdre de FCFA.');
+accounting_test_same([
+    0 => [1 => 1, 2 => 0, 3 => 0],
+    1 => [2 => 1, 3 => 1],
+], accounting_allocate_remaining_payments([1 => 1, 2 => 1, 3 => 1], [
+    ['account_id' => 1, 'amount_fcfa' => 1],
+    ['account_id' => 2, 'amount_fcfa' => 2],
+]), 'La régularisation séquentielle ne crédite jamais deux fois une ligne.');
+accounting_test_throws(static fn () => accounting_allocate_remaining_payments([1 => 1000], [['account_id' => 1, 'amount_fcfa' => 1001]]), 'Une régularisation supérieure au reliquat doit être refusée.');
+accounting_test_same(25000, accounting_signed_difference(55000, 30000, 'Écart'), 'Un écart de rapprochement positif est calculé en entier.');
+accounting_test_same(-25000, accounting_signed_difference(30000, 55000, 'Écart'), 'Un écart de rapprochement négatif est calculé en entier.');
+accounting_test_throws(static fn () => accounting_normalize_direct_sale_items([]), 'Une vente directe vide doit être refusée.');
+accounting_test_throws(static fn () => accounting_normalize_direct_sale_items([[
+    'product_id' => '1', 'quantity' => '1', 'unit_price_fcfa' => '1000', 'discount_fcfa' => '1000',
+]]), 'Une remise ne peut pas annuler intégralement une montre.');
+
 $transfer = ['nature' => 'transfer', 'account_id' => 3, 'destination_account_id' => 4, 'amount_fcfa' => 10000];
 accounting_test_same(-10000, accounting_operation_effect_fcfa($transfer, 3), 'Le compte source d’un transfert est débité.');
 accounting_test_same(10000, accounting_operation_effect_fcfa($transfer, 4), 'Le compte destinataire d’un transfert est crédité.');

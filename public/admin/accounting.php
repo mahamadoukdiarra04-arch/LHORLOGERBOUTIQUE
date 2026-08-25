@@ -16,7 +16,7 @@ require APP_ROOT . '/templates/admin-header.php';
   <div>
     <p class="admin-kicker">Comptabilité · Noyau sécurisé</p>
     <h1>Préparer une trésorerie fiable.</h1>
-    <p>Les règles de comptes, opérations, ventilations et contrepassations sont prêtes. Aucun solde ni mouvement n’a été créé automatiquement.</p>
+    <p>Les règles de comptes, ventes, dépenses, transferts, remboursements et rapprochements sont prêtes. Aucun solde ni mouvement n’a été créé automatiquement.</p>
   </div>
 </header>
 
@@ -26,7 +26,7 @@ require APP_ROOT . '/templates/admin-header.php';
   <section class="metric-grid">
     <article class="metric"><p>Comptes configurés</p><strong><?= $accountingStatus['accounts'] ?></strong><span>Seuls des comptes réels seront ajoutés lors du paramétrage.</span></article>
     <article class="metric"><p>Catégories système</p><strong><?= $accountingStatus['categories'] ?></strong><span>Traitements stables pour le futur TED.</span></article>
-    <article class="metric"><p>Mouvements comptables</p><strong><?= $accountingStatus['operations'] ?></strong><span>Doit rester à zéro avant les actions financières.</span></article>
+    <article class="metric"><p>Mouvements comptables</p><strong><?= $accountingStatus['operations'] ?></strong><span>Seules les actions confirmées y apparaîtront.</span></article>
     <article class="metric"><p>État</p><strong>Prêt</strong><span>Fondation MySQL initialisée sans données fictives.</span></article>
   </section>
 
@@ -34,12 +34,12 @@ require APP_ROOT . '/templates/admin-header.php';
     <article class="admin-panel">
       <p class="admin-kicker">Ce qui est déjà sécurisé</p>
       <h2>Une base commune pour les chiffres réels.</h2>
-      <p class="admin-copy">Les futures opérations seront reliées à une référence de commande complète, jamais à une seule ligne du panier. Les coûts historiques, les réassorts, les dépenses Meta et le stock disposent désormais des emplacements nécessaires pour rester cohérents.</p>
+      <p class="admin-copy">Chaque vente, régularisation, dépense, transfert ou remboursement sera relié à une trace complète. Les coûts historiques, les réassorts et le stock restent cohérents avec le Journal.</p>
     </article>
     <article class="admin-panel">
       <p class="admin-kicker">Étape suivante</p>
-      <h2>Relier la livraison et le stock.</h2>
-      <p class="admin-copy">Le prochain jalon connectera ces règles au statut Livrée afin qu’un encaissement, une sortie de stock et une référence de commande restent atomiques.</p>
+      <h2>Rendre ces actions accessibles.</h2>
+      <p class="admin-copy">Le prochain jalon apporte le Journal, le TED, les paramètres de comptes et les formulaires de gestion, optimisés pour mobile.</p>
     </article>
   </section>
 
