@@ -488,4 +488,7 @@ require_once __DIR__ . '/accounting_allocations.php';
 require_once __DIR__ . '/accounting_operations.php';
 require_once __DIR__ . '/accounting_stock.php';
 require_once __DIR__ . '/accounting_delivery.php';
+require_once __DIR__ . '/accounting_treasury.php';
+require_once __DIR__ . '/accounting_sales.php';
+require_once __DIR__ . '/accounting_attachments.php';
 require_once __DIR__ . '/accounting_reports.php';

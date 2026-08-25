@@ -58,12 +58,20 @@ function accounting_stock_record_movement(PDO $pdo, array $data): array {
     $groupId = array_key_exists('operation_group_id', $data) && $data['operation_group_id'] !== null
         ? accounting_integer($data['operation_group_id'], 'Le groupe comptable', 1)
         : null;
-    if ($orderId !== null && $directSaleItemId !== null) throw new RuntimeException('Une sortie ne peut pas venir de deux sources.');
-    if ($movementType !== 'Sortie' && ($orderId !== null || $directSaleItemId !== null)) {
-        throw new RuntimeException('Une source de vente ne peut être liée qu’à une sortie de stock.');
+    if ($orderId !== null && $directSaleItemId !== null) throw new RuntimeException('Un mouvement ne peut pas venir de deux sources de vente.');
+    $isSaleSource = $orderId !== null || $directSaleItemId !== null;
+    $isSaleReturn = accounting_flag($data['is_sale_return'] ?? '0', 'Le retour de vente') === 1;
+    if ($movementType !== 'Sortie' && $isSaleSource && !($movementType === 'Ajustement' && $isSaleReturn)) {
+        throw new RuntimeException('Une source de vente ne peut être liée qu’à une sortie ou à un retour physique de stock.');
     }
-    if (($orderId !== null || $directSaleItemId !== null) && $groupId === null) {
-        throw new RuntimeException('Une sortie de vente doit être liée à son groupe comptable.');
+    if ($movementType === 'Sortie' && $isSaleReturn) {
+        throw new RuntimeException('Une sortie de stock ne peut pas être déclarée comme un retour.');
+    }
+    if ($movementType === 'Ajustement' && $isSaleReturn && !$isSaleSource) {
+        throw new RuntimeException('Un retour physique doit être relié à une ligne de vente.');
+    }
+    if ($isSaleSource && $groupId === null) {
+        throw new RuntimeException('Un mouvement issu d’une vente doit être lié à son groupe comptable.');
     }
 
     $storedQuantity = $quantity;
@@ -102,6 +110,27 @@ function accounting_stock_record_movement(PDO $pdo, array $data): array {
             ? accounting_integer($data['sale_unit_price_fcfa'], 'Le prix de vente historique', 0)
             : null;
         $storedQuantity = -$quantity;
+    } elseif ($movementType === 'Ajustement' && $isSaleReturn) {
+        if ($orderId !== null) {
+            $source = $pdo->prepare('SELECT id FROM stock_movements WHERE order_id = ? AND movement_type = "Sortie" FOR UPDATE');
+            $source->execute([$orderId]);
+            if (!$source->fetchColumn()) throw new RuntimeException('La sortie de stock d’origine est introuvable pour ce retour.');
+            $existing = $pdo->prepare('SELECT id FROM stock_movements WHERE order_id = ? AND movement_type = "Ajustement" FOR UPDATE');
+            $existing->execute([$orderId]);
+            if ($existing->fetchColumn()) throw new RuntimeException('Le retour physique de cette ligne de commande existe déjà.');
+        }
+        if ($directSaleItemId !== null) {
+            $source = $pdo->prepare('SELECT id FROM stock_movements WHERE direct_sale_item_id = ? AND movement_type = "Sortie" FOR UPDATE');
+            $source->execute([$directSaleItemId]);
+            if (!$source->fetchColumn()) throw new RuntimeException('La sortie de stock d’origine est introuvable pour ce retour.');
+            $existing = $pdo->prepare('SELECT id FROM stock_movements WHERE direct_sale_item_id = ? AND movement_type = "Ajustement" FOR UPDATE');
+            $existing->execute([$directSaleItemId]);
+            if ($existing->fetchColumn()) throw new RuntimeException('Le retour physique de cette ligne de vente directe existe déjà.');
+        }
+        $unitCostSnapshot = accounting_integer($data['unit_cost_snapshot_fcfa'] ?? null, 'Le coût unitaire historique', 0);
+        $saleUnitPrice = array_key_exists('sale_unit_price_fcfa', $data) && $data['sale_unit_price_fcfa'] !== null
+            ? accounting_integer($data['sale_unit_price_fcfa'], 'Le prix de vente historique', 0)
+            : null;
     }
 
     $note = accounting_optional_text($data['note'] ?? null, 'La note', 255);

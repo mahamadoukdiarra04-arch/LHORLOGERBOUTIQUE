@@ -19,4 +19,7 @@ return [
     ],
     'app_key' => 'REPLACE_WITH_A_RANDOM_64_CHARACTER_SECRET',
     'base_url' => '',
+    // Optional absolute private directory for accounting evidence. If omitted,
+    // it is stored outside the Git-deployed public_html directory.
+    // 'accounting_storage_path' => '/home/ACCOUNT/private/lhorloger-accounting',
 ];
