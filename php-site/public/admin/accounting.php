@@ -1,7 +1,6 @@
 <?php
 require __DIR__ . '/../../app/bootstrap.php';
 require_manager();
-require APP_ROOT . '/accounting.php';
 
 try {
     $accountingStatus = accounting_foundation_status();
@@ -15,9 +14,9 @@ require APP_ROOT . '/templates/admin-header.php';
 ?>
 <header class="admin-page-head">
   <div>
-    <p class="admin-kicker">Comptabilité · Phase 1</p>
+    <p class="admin-kicker">Comptabilité · Noyau sécurisé</p>
     <h1>Préparer une trésorerie fiable.</h1>
-    <p>La structure des comptes, catégories, opérations et liens stock est prête. Aucun solde ni mouvement n’a été créé automatiquement.</p>
+    <p>Les règles de comptes, opérations, ventilations et contrepassations sont prêtes. Aucun solde ni mouvement n’a été créé automatiquement.</p>
   </div>
 </header>
 
@@ -25,7 +24,7 @@ require APP_ROOT . '/templates/admin-header.php';
   <section class="admin-panel"><p class="flash flash-error"><?= e($accountingError) ?></p></section>
 <?php else: ?>
   <section class="metric-grid">
-    <article class="metric"><p>Comptes configurés</p><strong><?= $accountingStatus['accounts'] ?></strong><span>Les comptes réels seront renseignés à la phase suivante.</span></article>
+    <article class="metric"><p>Comptes configurés</p><strong><?= $accountingStatus['accounts'] ?></strong><span>Seuls des comptes réels seront ajoutés lors du paramétrage.</span></article>
     <article class="metric"><p>Catégories système</p><strong><?= $accountingStatus['categories'] ?></strong><span>Traitements stables pour le futur TED.</span></article>
     <article class="metric"><p>Mouvements comptables</p><strong><?= $accountingStatus['operations'] ?></strong><span>Doit rester à zéro avant les actions financières.</span></article>
     <article class="metric"><p>État</p><strong>Prêt</strong><span>Fondation MySQL initialisée sans données fictives.</span></article>
@@ -39,8 +38,8 @@ require APP_ROOT . '/templates/admin-header.php';
     </article>
     <article class="admin-panel">
       <p class="admin-kicker">Étape suivante</p>
-      <h2>Configurer les comptes réels.</h2>
-      <p class="admin-copy">La prochaine phase permettra de créer Caisse, Banque et portefeuilles mobile money avec leurs soldes d’ouverture réels, puis d’enregistrer les premiers encaissements et décaissements.</p>
+      <h2>Relier la livraison et le stock.</h2>
+      <p class="admin-copy">Le prochain jalon connectera ces règles au statut Livrée afin qu’un encaissement, une sortie de stock et une référence de commande restent atomiques.</p>
     </article>
   </section>
 
@@ -49,7 +48,7 @@ require APP_ROOT . '/templates/admin-header.php';
     <h2>Pas de raccourci sur les données.</h2>
     <div class="events">
       <div class="event"><strong>Références de commande</strong><span>Toutes les lignes partageant une même référence seront traitées comme une vente unique.</span></div>
-      <div class="event"><strong>Historique</strong><span>Les opérations confirmées seront contrepassées, jamais supprimées silencieusement.</span></div>
+      <div class="event"><strong>Historique</strong><span>Les opérations confirmées sont conçues pour être contrepassées, jamais supprimées silencieusement.</span></div>
       <div class="event"><strong>Coûts Meta</strong><span>Les coûts existants ne seront pas recopiés automatiquement dans la trésorerie.</span></div>
     </div>
   </section>

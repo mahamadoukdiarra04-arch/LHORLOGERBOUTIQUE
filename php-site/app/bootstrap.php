@@ -278,3 +278,8 @@ function log_closer_event(int $orderId, string $type, ?string $note = null): voi
     );
     $statement->execute([$orderId, admin_identity(), $type, $note]);
 }
+
+// Accounting services are inert until a protected manager route invokes them.
+// Loading the definitions here keeps all future admin entry points on the same
+// server-side rules without initializing accounts or financial data.
+require_once APP_ROOT . '/accounting.php';
