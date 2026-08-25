@@ -136,6 +136,28 @@ function accounting_create_disbursement(PDO $pdo, array $data, ?int $userId = nu
     });
 }
 
+function accounting_confirm_draft_disbursement(PDO $pdo, int $operationId, array $data, ?int $userId = null): array {
+    ensure_accounting_schema();
+    return accounting_with_transaction($pdo, function () use ($pdo, $operationId, $data, $userId): array {
+        $operation = accounting_find_operation($pdo, $operationId, true);
+        if ($operation['status'] !== 'draft' || $operation['nature'] !== 'disbursement' || $operation['source_type'] !== 'manual') {
+            throw new RuntimeException('Seul un brouillon de décaissement peut être confirmé par ce parcours.');
+        }
+        accounting_require_debit_authorization(
+            $pdo,
+            (int) $operation['account_id'],
+            (int) $operation['amount_fcfa'],
+            (string) $operation['effective_at'],
+            $data['allow_negative_balance'] ?? '0',
+            $data['negative_balance_acknowledgement'] ?? null,
+            $operation['note'],
+        );
+        $confirmed = accounting_confirm_operation($pdo, $operationId, $userId);
+        accounting_audit($pdo, 'confirm_draft_disbursement', 'operation', $operationId, $operation, $confirmed['operation'], $userId);
+        return $confirmed;
+    });
+}
+
 function accounting_create_transfer(PDO $pdo, array $data, ?int $userId = null): array {
     ensure_accounting_schema();
     $idempotencyKey = accounting_uuid($data['idempotency_key'] ?? null);

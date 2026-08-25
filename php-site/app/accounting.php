@@ -492,3 +492,4 @@ require_once __DIR__ . '/accounting_treasury.php';
 require_once __DIR__ . '/accounting_sales.php';
 require_once __DIR__ . '/accounting_attachments.php';
 require_once __DIR__ . '/accounting_reports.php';
+require_once __DIR__ . '/accounting_journal.php';
