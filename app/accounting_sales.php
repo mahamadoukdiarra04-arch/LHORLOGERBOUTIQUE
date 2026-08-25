@@ -323,11 +323,17 @@ function accounting_create_refund(PDO $pdo, array $data, ?int $userId = null): a
         $inputTotal = 0;
         foreach (array_values($data['lines']) as $input) {
             if (!is_array($input)) throw new RuntimeException('Une ligne de remboursement est invalide.');
+            $amountRaw = trim((string) ($input['amount_fcfa'] ?? ''));
+            $quantityRaw = trim((string) ($input['quantity'] ?? '0'));
+            $returnRaw = $input['return_to_stock'] ?? '0';
+            if ($amountRaw === '' && ($quantityRaw === '' || $quantityRaw === '0') && accounting_flag($returnRaw, 'Le retour en stock') === 0) {
+                continue;
+            }
             $lineId = accounting_integer($input['source_line_id'] ?? null, 'La ligne de vente', 1);
             if (!isset($byId[$lineId]) || isset($entries[$lineId])) throw new RuntimeException('Une ligne de remboursement est inconnue ou dupliquée.');
-            $lineAmount = accounting_integer($input['amount_fcfa'] ?? null, 'Le montant remboursé de la ligne', 1);
-            $quantity = accounting_integer($input['quantity'] ?? 0, 'La quantité retournée', 0);
-            $returnToStock = accounting_flag($input['return_to_stock'] ?? '0', 'Le retour en stock') === 1;
+            $lineAmount = accounting_integer($amountRaw, 'Le montant remboursé de la ligne', 1);
+            $quantity = accounting_integer($quantityRaw === '' ? '0' : $quantityRaw, 'La quantité retournée', 0);
+            $returnToStock = accounting_flag($returnRaw, 'Le retour en stock') === 1;
             $line = $byId[$lineId];
             if ($lineAmount > accounting_line_net_paid($pdo, $sourceKind, $lineId)) throw new RuntimeException('Le remboursement dépasse le net encaissé de cette ligne.');
             $maxQuantity = accounting_integer($line['quantity'], 'La quantité vendue', 1);
