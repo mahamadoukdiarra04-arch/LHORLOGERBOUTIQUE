@@ -66,6 +66,31 @@ accounting_test_same('encaissée', accounting_payment_state(55000, 55000, 0), 'U
 accounting_test_same('remboursée', accounting_payment_state(55000, 55000, 55000), 'Un paiement entièrement remboursé est identifié.');
 accounting_test_same('sur-encaissée à régulariser', accounting_payment_state(55000, 56000, 0), 'Un surplus de paiement doit être signalé.');
 
+$deliveryLines = [
+    ['id' => 11, 'quantity' => 1, 'unit_price_fcfa' => 52000],
+    ['id' => 12, 'quantity' => 1, 'unit_price_fcfa' => 62000],
+];
+$deliveryPayments = [
+    ['account_id' => 1, 'amount_fcfa' => 44000],
+    ['account_id' => 2, 'amount_fcfa' => 70000],
+];
+accounting_test_same([
+    0 => [11 => 20070, 12 => 23930],
+    1 => [11 => 31930, 12 => 38070],
+], accounting_allocate_delivery_payments($deliveryLines, $deliveryPayments), 'Les encaissements de livraison ventilent toutes les lignes sans perte.');
+accounting_test_same([
+    0 => [1 => 1, 2 => 0, 3 => 0],
+    1 => [2 => 1, 3 => 1],
+], accounting_allocate_delivery_payments([
+    ['id' => 1, 'quantity' => 1, 'unit_price_fcfa' => 1],
+    ['id' => 2, 'quantity' => 1, 'unit_price_fcfa' => 1],
+    ['id' => 3, 'quantity' => 1, 'unit_price_fcfa' => 1],
+], [
+    ['account_id' => 1, 'amount_fcfa' => 1],
+    ['account_id' => 2, 'amount_fcfa' => 2],
+]), 'Les paiements successifs respectent le reliquat de chaque ligne.');
+accounting_test_throws(static fn () => accounting_allocate_delivery_payments($deliveryLines, [['account_id' => 1, 'amount_fcfa' => 114001]]), 'Un encaissement supérieur au total doit être refusé.');
+
 $transfer = ['nature' => 'transfer', 'account_id' => 3, 'destination_account_id' => 4, 'amount_fcfa' => 10000];
 accounting_test_same(-10000, accounting_operation_effect_fcfa($transfer, 3), 'Le compte source d’un transfert est débité.');
 accounting_test_same(10000, accounting_operation_effect_fcfa($transfer, 4), 'Le compte destinataire d’un transfert est crédité.');

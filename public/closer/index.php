@@ -72,12 +72,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $updateTracking = $pdo->prepare('UPDATE order_closer_tracking SET follow_up_status = ?, follow_up_at = ?, note = ? WHERE order_id = ?');
             $updateTracking->execute([$state, $followUp, $note !== '' ? $note : null, $orderId]);
             if ($state === 'Confirmée') {
-                $updateOrder = $pdo->prepare("UPDATE orders SET status = 'Confirmée', acquisition_channel = ? WHERE id = ?");
-                $updateOrder->execute([$channel, $orderId]);
+                $updateOrder = $pdo->prepare("UPDATE orders SET status = 'Confirmée', acquisition_channel = ? WHERE order_ref = ?");
+                $updateOrder->execute([$channel, $order['order_ref']]);
                 log_event('commande', 'Confirmée par ' . $closer, (int) $order['product_id'], $orderId);
             } elseif ($state === 'Annulée') {
-                $updateOrder = $pdo->prepare("UPDATE orders SET status = 'Annulée' WHERE id = ?");
-                $updateOrder->execute([$orderId]);
+                $updateOrder = $pdo->prepare("UPDATE orders SET status = 'Annulée' WHERE order_ref = ?");
+                $updateOrder->execute([$order['order_ref']]);
                 log_event('commande', 'Annulée par ' . $closer, (int) $order['product_id'], $orderId);
             }
             log_closer_event($orderId, $state, $note !== '' ? $note : null);

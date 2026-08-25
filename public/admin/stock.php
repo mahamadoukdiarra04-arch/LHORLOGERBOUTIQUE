@@ -2,6 +2,13 @@
 require __DIR__ . '/../../app/bootstrap.php';
 require_manager();
 $pdo = db();
+try {
+    ensure_accounting_schema();
+} catch (Throwable $exception) {
+    error_log('L’Horloger: initialisation du stock comptable échouée.');
+    http_response_code(503);
+    exit('Le stock comptable ne peut pas être préparé pour le moment. Réessayez dans quelques instants.');
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
@@ -16,45 +23,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($action === 'movement') {
             $type = (string) ($_POST['movement_type'] ?? '');
-            $quantity = (int) ($_POST['quantity'] ?? 0);
-            $purchase = max(0, (int) ($_POST['purchase_price'] ?? 0));
-            $transit = max(0, (int) ($_POST['transit_price'] ?? 0));
-            $note = trim((string) ($_POST['note'] ?? ''));
-
-            if (!in_array($type, ['Réassort', 'Sortie', 'Ajustement'], true) || $quantity < 1) {
-                throw new RuntimeException('Quantité ou mouvement invalide.');
+            try {
+                $pdo->beginTransaction();
+                $movement = accounting_stock_record_movement($pdo, [
+                    'product_id' => $productId,
+                    'movement_type' => $type,
+                    'quantity' => $_POST['quantity'] ?? null,
+                    'purchase_price_fcfa' => $_POST['purchase_price'] ?? null,
+                    'transit_price_fcfa' => $_POST['transit_price'] ?? null,
+                    'note' => $_POST['note'] ?? null,
+                    'actor' => admin_identity(),
+                ]);
+                log_event('stock', $type . ' · ' . $productName . ' · ' . abs((int) $movement['quantity']) . ' unité(s)', $productId);
+                $pdo->commit();
+            } catch (Throwable $exception) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                throw $exception;
             }
-            if ($type === 'Réassort' && $purchase < 1) {
-                throw new RuntimeException('Indiquez le prix d’achat du réassort.');
-            }
-            if ($type === 'Sortie') {
-                $availableStatement = $pdo->prepare(
-                    'SELECT COALESCE(SUM(quantity), 0) FROM stock_movements WHERE product_id = ?'
-                );
-                $availableStatement->execute([$productId]);
-                if ((int) $availableStatement->fetchColumn() < $quantity) {
-                    throw new RuntimeException('La sortie dépasse le stock disponible.');
-                }
-                $quantity = -$quantity;
-            }
-
-            $unitCost = $type === 'Réassort' ? ($purchase + $transit) / $quantity : null;
-            $insert = $pdo->prepare(
-                'INSERT INTO stock_movements
-                 (product_id, movement_type, quantity, purchase_price_fcfa, transit_price_fcfa, unit_cost_fcfa, note, actor)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-            );
-            $insert->execute([
-                $productId,
-                $type,
-                $quantity,
-                $type === 'Réassort' ? $purchase : null,
-                $type === 'Réassort' ? $transit : null,
-                $unitCost,
-                $note !== '' ? $note : null,
-                admin_identity(),
-            ]);
-            log_event('stock', $type . ' · ' . $productName . ' · ' . abs($quantity) . ' unité(s)', $productId);
             flash('success', 'Mouvement de stock enregistré.');
         } elseif ($action === 'ads') {
             $start = (string) ($_POST['start_date'] ?? '');
@@ -89,7 +74,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('success', 'Prix de vente mis à jour.');
         }
     } catch (Throwable $exception) {
-        flash('error', $exception->getMessage());
+        error_log('L’Horloger: mise à jour de stock échouée.');
+        flash('error', accounting_safe_error_message($exception, 'Le mouvement de stock n’a pas pu être enregistré. Réessayez dans quelques instants.'));
     }
 
     redirect('/admin/stock.php?product=' . $productId);
