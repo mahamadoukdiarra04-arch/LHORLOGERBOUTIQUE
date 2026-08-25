@@ -308,3 +308,145 @@ function accounting_foundation_status(): array {
         'operations' => (int) $pdo->query('SELECT COUNT(*) FROM accounting_operations')->fetchColumn(),
     ];
 }
+
+/**
+ * Monetary inputs stay as integers from the first HTTP boundary through to
+ * MySQL. This intentionally rejects formatted values such as "55 000" so a
+ * browser can never silently turn a separator into a rounding error.
+ */
+function accounting_integer(mixed $value, string $label, int $minimum = 0): int {
+    if (is_int($value)) {
+        $number = $value;
+    } elseif (is_string($value) && preg_match('/^-?(?:0|[1-9][0-9]*)$/', $value)) {
+        $limit = str_starts_with($value, '-') ? ltrim((string) PHP_INT_MIN, '-') : (string) PHP_INT_MAX;
+        $absolute = ltrim($value, '-');
+        if (strlen($absolute) > strlen($limit) || (strlen($absolute) === strlen($limit) && strcmp($absolute, $limit) > 0)) {
+            throw new RuntimeException($label . ' est trop élevé.');
+        }
+        $number = (int) $value;
+    } else {
+        throw new RuntimeException($label . ' doit être un montant entier en FCFA.');
+    }
+
+    if ($number < $minimum) {
+        throw new RuntimeException($label . ' doit être ' . ($minimum > 0 ? 'strictement positif.' : 'positif ou nul.'));
+    }
+    return $number;
+}
+
+function accounting_flag(mixed $value, string $label): int {
+    if ($value === true || $value === 1 || $value === '1') return 1;
+    if ($value === false || $value === 0 || $value === '0') return 0;
+    throw new RuntimeException($label . ' est invalide.');
+}
+
+function accounting_historical_cogs_fcfa(mixed $quantity, mixed $unitCostFcfa): int {
+    $units = accounting_integer($quantity, 'La quantité', 0);
+    $unitCost = accounting_integer($unitCostFcfa, 'Le coût unitaire historique', 0);
+    if ($units > 0 && $unitCost > intdiv(PHP_INT_MAX, $units)) {
+        throw new RuntimeException('Le coût historique est trop élevé.');
+    }
+    return $units * $unitCost;
+}
+
+function accounting_non_empty_text(mixed $value, string $label, int $maximum): string {
+    $text = trim((string) $value);
+    if ($text === '') throw new RuntimeException($label . ' est obligatoire.');
+    if (mb_strlen($text) > $maximum) throw new RuntimeException($label . ' est trop long.');
+    return $text;
+}
+
+function accounting_optional_text(mixed $value, string $label, int $maximum): ?string {
+    $text = trim((string) $value);
+    if ($text === '') return null;
+    if (mb_strlen($text) > $maximum) throw new RuntimeException($label . ' est trop long.');
+    return $text;
+}
+
+function accounting_bamako_timezone(): DateTimeZone {
+    static $timezone = null;
+    return $timezone ??= new DateTimeZone('Africa/Bamako');
+}
+
+function accounting_effective_at(mixed $value, string $label = 'La date'): string {
+    $raw = trim((string) $value);
+    $formats = ['!Y-m-d H:i:s', '!Y-m-d H:i', '!Y-m-d'];
+    foreach ($formats as $format) {
+        $date = DateTimeImmutable::createFromFormat($format, $raw, accounting_bamako_timezone());
+        $errors = DateTimeImmutable::getLastErrors();
+        if ($date instanceof DateTimeImmutable && ($errors === false || ($errors['warning_count'] === 0 && $errors['error_count'] === 0))) {
+            return $format === '!Y-m-d' ? $date->setTime(0, 0, 0)->format('Y-m-d H:i:s') : $date->format('Y-m-d H:i:s');
+        }
+    }
+    throw new RuntimeException($label . ' est invalide.');
+}
+
+function accounting_code(mixed $value, string $label, int $maximum = 40): string {
+    $code = strtoupper(trim((string) $value));
+    if (!preg_match('/^[A-Z0-9_-]{2,' . $maximum . '}$/', $code)) {
+        throw new RuntimeException($label . ' doit contenir uniquement des lettres, chiffres, tirets ou underscores.');
+    }
+    return $code;
+}
+
+function accounting_uuid(mixed $value, string $label = 'La clé de confirmation'): string {
+    $uuid = strtolower(trim((string) $value));
+    if (!preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/', $uuid)) {
+        throw new RuntimeException($label . ' est invalide. Rechargez la page puis réessayez.');
+    }
+    return $uuid;
+}
+
+function accounting_new_uuid(): string {
+    $bytes = random_bytes(16);
+    $bytes[6] = chr((ord($bytes[6]) & 0x0f) | 0x40);
+    $bytes[8] = chr((ord($bytes[8]) & 0x3f) | 0x80);
+    $hex = bin2hex($bytes);
+    return substr($hex, 0, 8) . '-' . substr($hex, 8, 4) . '-' . substr($hex, 12, 4) . '-' . substr($hex, 16, 4) . '-' . substr($hex, 20);
+}
+
+function accounting_current_user_id(): ?int {
+    $userId = (int) ($_SESSION['admin_user_id'] ?? 0);
+    return $userId > 0 ? $userId : null;
+}
+
+function accounting_json_snapshot(?array $data): ?string {
+    if ($data === null) return null;
+    return json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR);
+}
+
+function accounting_with_transaction(PDO $pdo, callable $callback): mixed {
+    $owner = !$pdo->inTransaction();
+    if ($owner) $pdo->beginTransaction();
+    try {
+        $result = $callback();
+        if ($owner) $pdo->commit();
+        return $result;
+    } catch (Throwable $exception) {
+        if ($owner && $pdo->inTransaction()) $pdo->rollBack();
+        throw $exception;
+    }
+}
+
+function accounting_audit(PDO $pdo, string $action, string $entityType, ?int $entityId, ?array $previous = null, ?array $next = null, ?int $userId = null): void {
+    $statement = $pdo->prepare(
+        'INSERT INTO accounting_audit_log (user_id, action, entity_type, entity_id, previous_data, next_data, ip_address, user_agent)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    );
+    $statement->execute([
+        $userId ?? accounting_current_user_id(),
+        $action,
+        $entityType,
+        $entityId,
+        accounting_json_snapshot($previous),
+        accounting_json_snapshot($next),
+        accounting_optional_text($_SERVER['REMOTE_ADDR'] ?? null, 'Adresse IP', 45),
+        accounting_optional_text($_SERVER['HTTP_USER_AGENT'] ?? null, 'Navigateur', 500),
+    ]);
+}
+
+require_once __DIR__ . '/accounting_accounts.php';
+require_once __DIR__ . '/accounting_categories.php';
+require_once __DIR__ . '/accounting_allocations.php';
+require_once __DIR__ . '/accounting_operations.php';
+require_once __DIR__ . '/accounting_reports.php';
