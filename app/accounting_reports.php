@@ -69,6 +69,35 @@ function accounting_treasury_total(PDO $pdo, ?string $asOf = null): int {
     return $total;
 }
 
+function accounting_has_active_accounts(PDO $pdo): bool {
+    $statement = $pdo->query('SELECT 1 FROM accounting_accounts WHERE is_active = 1 LIMIT 1');
+    return (bool) $statement->fetchColumn();
+}
+
+function accounting_order_has_confirmed_entries(PDO $pdo, string $orderRef): bool {
+    $orderRef = accounting_non_empty_text($orderRef, 'La référence de commande', 32);
+    $statement = $pdo->prepare(
+        'SELECT 1
+         FROM accounting_operation_groups g
+         INNER JOIN accounting_operations o ON o.group_id = g.id AND o.status = "confirmed"
+         WHERE g.order_ref = ?
+         LIMIT 1'
+    );
+    $statement->execute([$orderRef]);
+    return (bool) $statement->fetchColumn();
+}
+
+function accounting_order_has_open_payment_exception(PDO $pdo, string $orderRef): bool {
+    $orderRef = accounting_non_empty_text($orderRef, 'La référence de commande', 32);
+    $statement = $pdo->prepare(
+        'SELECT 1 FROM accounting_payment_exceptions
+         WHERE order_ref = ? AND status = "open"
+         LIMIT 1'
+    );
+    $statement->execute([$orderRef]);
+    return (bool) $statement->fetchColumn();
+}
+
 function accounting_order_payment_summary(PDO $pdo, string $orderRef): array {
     $orderRef = accounting_non_empty_text($orderRef, 'La référence de commande', 32);
     $totalStatement = $pdo->prepare(
@@ -157,10 +186,12 @@ function accounting_product_results(PDO $pdo, mixed $start, mixed $end): array {
             COALESCE(SUM(CASE WHEN a.treatment = "product_revenue" THEN a.effect_sign * a.amount_fcfa ELSE 0 END), 0) AS revenue_fcfa,
             COALESCE(SUM(CASE WHEN a.treatment = "product_refund" THEN a.effect_sign * a.amount_fcfa ELSE 0 END), 0) AS refund_fcfa,
             COALESCE(SUM(a.effect_sign * a.cogs_amount_fcfa), 0) AS cogs_fcfa,
-            COALESCE(SUM(CASE WHEN a.treatment = "direct_expense" THEN a.effect_sign * a.amount_fcfa ELSE 0 END), 0) AS direct_expense_fcfa
+            COALESCE(SUM(CASE WHEN a.treatment = "direct_expense" THEN a.effect_sign * a.amount_fcfa ELSE 0 END), 0) AS direct_expense_fcfa,
+            COALESCE(SUM(CASE WHEN c.code = "meta_ads" THEN a.effect_sign * a.amount_fcfa ELSE 0 END), 0) AS meta_ads_fcfa
          FROM accounting_allocations a
          INNER JOIN accounting_operations o ON o.id = a.operation_id AND o.status = "confirmed"
          LEFT JOIN products p ON p.id = a.product_id
+         LEFT JOIN accounting_categories c ON c.id = a.category_id
          WHERE a.scope = "product" AND o.effective_at BETWEEN ? AND ?
          GROUP BY a.product_id, p.name
          ORDER BY revenue_fcfa DESC, a.product_id ASC'
@@ -168,7 +199,7 @@ function accounting_product_results(PDO $pdo, mixed $start, mixed $end): array {
     $statement->execute([$startAt, $endAt]);
     $results = [];
     foreach ($statement->fetchAll() as $row) {
-        foreach (['revenue_fcfa', 'refund_fcfa', 'cogs_fcfa', 'direct_expense_fcfa'] as $key) {
+        foreach (['revenue_fcfa', 'refund_fcfa', 'cogs_fcfa', 'direct_expense_fcfa', 'meta_ads_fcfa'] as $key) {
             $row[$key] = accounting_integer((string) $row[$key], 'Un agrégat produit', PHP_INT_MIN);
         }
         $row['net_revenue_fcfa'] = $row['revenue_fcfa'] - $row['refund_fcfa'];

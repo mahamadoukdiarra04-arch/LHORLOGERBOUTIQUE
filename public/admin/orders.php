@@ -77,6 +77,29 @@ $statement = $pdo->prepare($sql);
 $statement->execute($params);
 $orders = $statement->fetchAll();
 
+$selectedOrder = null;
+foreach ($orders as $candidate) {
+    if ($selected === (int) $candidate['id']) {
+        $selectedOrder = $candidate;
+        break;
+    }
+}
+$selectedFinance = null;
+$selectedFinanceTracked = false;
+$selectedOpenException = false;
+if ($selectedOrder && $selectedOrder['status'] === 'Livrée') {
+    try {
+        $selectedFinanceTracked = accounting_order_has_confirmed_entries($pdo, (string) $selectedOrder['order_ref']);
+        if ($selectedFinanceTracked) {
+            $selectedFinance = accounting_order_payment_summary($pdo, (string) $selectedOrder['order_ref']);
+            $selectedOpenException = accounting_order_has_open_payment_exception($pdo, (string) $selectedOrder['order_ref']);
+        }
+    } catch (Throwable $exception) {
+        error_log('L’Horloger: détail comptable de commande indisponible.');
+        $selectedFinanceError = 'Le détail comptable de cette commande ne peut pas être préparé pour le moment.';
+    }
+}
+
 $adminPageTitle = 'Commandes';
 require APP_ROOT . '/templates/admin-header.php';
 ?>
@@ -116,6 +139,13 @@ require APP_ROOT . '/templates/admin-header.php';
       </div>
       <?php if ($order['status'] === 'Livrée'): ?>
         <p class="admin-copy">Cette référence a été livrée. Son historique financier est protégé contre toute modification directe.</p>
+        <?php if (isset($selectedFinanceError)): ?>
+          <p class="flash flash-error"><?= e($selectedFinanceError) ?></p>
+        <?php elseif (!$selectedFinanceTracked): ?>
+          <section class="order-finance finance-context"><p class="admin-kicker">Comptabilité</p><h3>Historique non initialisé.</h3><p>Cette livraison ne possède pas d’écriture comptable confirmée. Aucun encaissement ou solde n’est déduit des anciennes données.</p></section>
+        <?php else: ?>
+          <section class="order-finance finance-context"><div class="admin-panel__head"><div><p class="admin-kicker">Paiement réalisé · <?= e($selectedFinance['payment_state']) ?></p><h3>Suivi financier de la référence.</h3></div><a href="<?= e(url('/admin/accounting-journal.php?q=' . rawurlencode((string) $order['order_ref']))) ?>">Voir le Journal →</a></div><div class="order-detail-grid"><div class="fact"><span>Total de commande</span><b><?= money($selectedFinance['sale_total_fcfa']) ?></b></div><div class="fact"><span>Encaissements</span><b><?= money($selectedFinance['received_fcfa']) ?></b></div><div class="fact"><span>Remboursements</span><b><?= money($selectedFinance['refunded_fcfa']) ?></b></div><div class="fact"><span>Solde à suivre</span><b><?= money($selectedFinance['remaining_fcfa']) ?></b></div></div><?php if ($selectedOpenException): ?><p class="admin-copy">Un reliquat est ouvert pour cette référence. Il peut être régularisé depuis l’espace Comptabilité.</p><a class="text-link" href="<?= e(url('/admin/accounting-action.php?action=collect_balance')) ?>">Encaisser ce reliquat →</a><?php endif; ?></section>
+        <?php endif; ?>
       <?php else: ?>
         <form class="inline-form" method="post">
           <?= csrf_field() ?><input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>">

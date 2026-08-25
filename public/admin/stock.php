@@ -104,6 +104,7 @@ $stockQuery = "
 ";
 $stock = $pdo->query($stockQuery)->fetchAll();
 $selected = (int) ($_GET['product'] ?? ($stock[0]['id'] ?? 0));
+[$periodKey, $periodLabel, $start, $end] = allowed_period();
 
 $eventsStatement = $pdo->prepare(
     'SELECT sm.*, p.name
@@ -123,6 +124,24 @@ $ads = $adsStatement->fetchAll();
 $selectedItem = current(array_filter($stock, fn(array $item): bool => (int) $item['id'] === $selected))
     ?: ($stock[0] ?? null);
 
+try {
+    $accountsReady = accounting_has_active_accounts($pdo);
+    $selectedResult = null;
+    if ($accountsReady && $selectedItem) {
+        foreach (accounting_product_results($pdo, $start, $end) as $result) {
+            if ((int) $result['product_id'] === (int) $selectedItem['id']) {
+                $selectedResult = $result;
+                break;
+            }
+        }
+    }
+} catch (Throwable $exception) {
+    error_log('L’Horloger: rentabilité produit indisponible dans le stock.');
+    $accountsReady = false;
+    $selectedResult = null;
+    $stockFinanceError = 'La rentabilité comptable ne peut pas être préparée pour le moment.';
+}
+
 $adminPageTitle = 'Stock & coûts';
 require APP_ROOT . '/templates/admin-header.php';
 ?>
@@ -138,7 +157,7 @@ require APP_ROOT . '/templates/admin-header.php';
   <?php foreach ($stock as $item): ?>
     <?php $low = (int) $item['quantity'] <= 6; ?>
     <?php $unitCost = $item['unit_cost'] !== null ? (float) $item['unit_cost'] : null; ?>
-    <a class="stock-card <?= $low ? 'low' : '' ?>" href="?product=<?= (int) $item['id'] ?>">
+    <a class="stock-card <?= $low ? 'low' : '' ?>" href="?<?= e(http_build_query(['product' => (int) $item['id'], 'period' => $periodKey, 'start' => $start, 'end' => $end])) ?>">
       <p><?= e($item['name']) ?></p>
       <div class="quantity"><?= (int) $item['quantity'] ?></div>
       <p>unités disponibles · seuil : 6</p>
@@ -151,6 +170,20 @@ require APP_ROOT . '/templates/admin-header.php';
 
 <?php if ($selectedItem): ?>
   <?php $selectedUnitCost = $selectedItem['unit_cost'] !== null ? (float) $selectedItem['unit_cost'] : null; ?>
+  <section class="admin-panel finance-context" style="margin-top:15px">
+    <div class="admin-panel__head"><div><p class="admin-kicker">Rentabilité réalisée · <?= e($selectedItem['name']) ?></p><h2>Lecture comptable de la période.</h2></div><a href="<?= e(url('/admin/accounting-ted.php?' . http_build_query(['period' => $periodKey, 'start' => $start, 'end' => $end]))) ?>">Voir le TED →</a></div>
+    <form class="admin-period accounting-period" method="get"><input type="hidden" name="product" value="<?= (int) $selectedItem['id'] ?>"><?php foreach (['today' => 'Aujourd’hui', '7' => '7 jours', '30' => '30 jours', '90' => '90 jours', 'month' => 'Ce mois', 'year' => 'Cette année'] as $key => $label): ?><a class="<?= $periodKey === $key ? 'active' : '' ?>" href="?<?= e(http_build_query(['product' => (int) $selectedItem['id'], 'period' => $key])) ?>"><?= e($label) ?></a><?php endforeach; ?><input type="hidden" name="period" value="custom"><span class="custom-period"><input type="date" name="start" value="<?= e($start) ?>"><input type="date" name="end" value="<?= e($end) ?>"><button class="admin-button">Choisir</button></span></form>
+    <?php if (isset($stockFinanceError)): ?>
+      <p class="flash flash-error"><?= e($stockFinanceError) ?></p>
+    <?php elseif (!$accountsReady): ?>
+      <p class="admin-copy">Comptabilité à initialiser : aucun montant réalisé n’est affiché avant la création d’un compte réel.</p><a class="text-link" href="<?= e(url('/admin/accounting-settings.php')) ?>">Configurer les comptes →</a>
+    <?php elseif (!$selectedResult): ?>
+      <p class="admin-copy">Aucune vente ou charge comptable confirmée pour ce produit sur <?= e($periodLabel) ?>.</p><a class="text-link" href="<?= e(url('/admin/accounting-journal.php?product_id=' . (int) $selectedItem['id'] . '&start=' . rawurlencode($start) . '&end=' . rawurlencode($end))) ?>">Voir le Journal filtré →</a>
+    <?php else: ?>
+      <div class="metric-grid realized-product-metrics"><article class="metric"><p>CA net réalisé</p><strong><?= money($selectedResult['net_revenue_fcfa']) ?></strong><span>Ventes moins remboursements</span></article><article class="metric"><p>Coût des montres vendues</p><strong><?= money($selectedResult['cogs_fcfa']) ?></strong><span>Coût figé à la sortie de stock</span></article><article class="metric"><p>Charges directes</p><strong><?= money($selectedResult['direct_expense_fcfa']) ?></strong><span>Dont Meta comptabilisé : <?= money($selectedResult['meta_ads_fcfa']) ?></span></article><article class="metric"><p>Contribution</p><strong><?= money($selectedResult['contribution_fcfa']) ?></strong><span>Après charges directes</span></article></div>
+      <a class="text-link" href="<?= e(url('/admin/accounting-journal.php?product_id=' . (int) $selectedItem['id'] . '&start=' . rawurlencode($start) . '&end=' . rawurlencode($end))) ?>">Voir le Journal filtré de ce produit →</a>
+    <?php endif; ?>
+  </section>
   <section class="admin-grid" style="margin-top:15px">
     <article class="admin-panel">
       <p class="admin-kicker">Mouvement · <?= e($selectedItem['name']) ?></p>
@@ -179,7 +212,7 @@ require APP_ROOT . '/templates/admin-header.php';
     </article>
 
     <article class="admin-panel">
-      <p class="admin-kicker">Publicité Meta · <?= e($selectedItem['name']) ?></p>
+      <p class="admin-kicker">Suivi Meta marketing · <?= e($selectedItem['name']) ?></p>
       <h2>Renseigner le coût ads.</h2>
       <form class="data-form" method="post">
         <?= csrf_field() ?>
@@ -190,7 +223,7 @@ require APP_ROOT . '/templates/admin-header.php';
         <label>Montant FCFA<input type="number" name="amount" min="1" required></label>
         <button class="admin-button">Enregistrer</button>
       </form>
-      <p style="color:#60718a;font-size:12px">Le CAC se calcule avec les ventes de ce produit sur la même période.</p>
+      <p style="color:#60718a;font-size:12px">Le CAC marketing se calcule avec les commandes web livrées sur la même période. Ce suivi n’entre pas encore dans le résultat réalisé : comptabilisez le décaissement Meta depuis Comptabilité.</p>
     </article>
   </section>
 
@@ -235,11 +268,11 @@ require APP_ROOT . '/templates/admin-header.php';
       <?php foreach ($ads as $ad): ?>
         <div class="event">
           <span>
-            <strong>Publicité Meta</strong>
+            <strong>Suivi Meta marketing</strong>
             <small><?= e($ad['start_date']) ?> → <?= e($ad['end_date']) ?></small>
           </span>
           <strong><?= e(money((int) $ad['amount_fcfa'])) ?></strong>
-          <span>Coût ads renseigné</span>
+          <span>Coût ads suivi · hors trésorerie comptable</span>
           <small><?= e($ad['actor'] ?? '') ?></small>
         </div>
       <?php endforeach; ?>
