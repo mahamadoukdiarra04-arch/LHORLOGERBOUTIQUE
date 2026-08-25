@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 const ACCOUNTING_FOUNDATION_VERSION = '20260825_accounting_foundation';
+const ACCOUNTING_DELIVERY_VERSION = '20260825_accounting_delivery';
 
 /**
  * The accounting foundation is deliberately initialized from PHP as well as
@@ -32,6 +33,13 @@ function ensure_accounting_schema(): void {
             accounting_seed_categories($pdo);
             $mark = $pdo->prepare('INSERT INTO accounting_schema_migrations (version) VALUES (?)');
             $mark->execute([ACCOUNTING_FOUNDATION_VERSION]);
+        }
+        $deliveryApplied = $pdo->prepare('SELECT 1 FROM accounting_schema_migrations WHERE version = ?');
+        $deliveryApplied->execute([ACCOUNTING_DELIVERY_VERSION]);
+        if (!$deliveryApplied->fetchColumn()) {
+            accounting_add_delivery_integrity($pdo);
+            $mark = $pdo->prepare('INSERT INTO accounting_schema_migrations (version) VALUES (?)');
+            $mark->execute([ACCOUNTING_DELIVERY_VERSION]);
         }
         $ready = true;
     } finally {
@@ -254,6 +262,12 @@ function accounting_add_foundation_columns(PDO $pdo): void {
     accounting_add_index_if_missing($pdo, 'ad_costs', 'idx_ads_accounting_operation', 'INDEX idx_ads_accounting_operation (accounting_operation_id)');
 }
 
+function accounting_add_delivery_integrity(PDO $pdo): void {
+    accounting_add_column_if_missing($pdo, 'orders', 'stock_processed', 'TINYINT(1) NOT NULL DEFAULT 0');
+    accounting_ensure_unique_index($pdo, 'stock_movements', 'idx_stock_order_source', 'UNIQUE INDEX idx_stock_order_source (order_id, movement_type)');
+    accounting_ensure_unique_index($pdo, 'stock_movements', 'idx_stock_direct_sale_source', 'UNIQUE INDEX idx_stock_direct_sale_source (direct_sale_item_id, movement_type)');
+}
+
 function accounting_add_column_if_missing(PDO $pdo, string $table, string $column, string $definition): void {
     $statement = $pdo->prepare(
         'SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?'
@@ -269,6 +283,24 @@ function accounting_add_index_if_missing(PDO $pdo, string $table, string $index,
     );
     $statement->execute([$table, $index]);
     if ($statement->fetchColumn()) return;
+    $pdo->exec('ALTER TABLE `' . $table . '` ADD ' . $definition);
+}
+
+function accounting_ensure_unique_index(PDO $pdo, string $table, string $index, string $definition): void {
+    $statement = $pdo->prepare(
+        'SELECT non_unique FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ? LIMIT 1'
+    );
+    $statement->execute([$table, $index]);
+    $existing = $statement->fetchColumn();
+    if ($existing !== false && (int) $existing === 0) return;
+    if ($existing !== false) {
+        $duplicates = $pdo->query(
+            'SELECT 1 FROM `' . $table . '` WHERE `' . ($index === 'idx_stock_order_source' ? 'order_id' : 'direct_sale_item_id') . '` IS NOT NULL
+             GROUP BY `' . ($index === 'idx_stock_order_source' ? 'order_id' : 'direct_sale_item_id') . '`, movement_type HAVING COUNT(*) > 1 LIMIT 1'
+        )->fetchColumn();
+        if ($duplicates) throw new RuntimeException('Des sorties de stock en double doivent être corrigées avant d’activer la livraison comptable.');
+        $pdo->exec('ALTER TABLE `' . $table . '` DROP INDEX `' . $index . '`');
+    }
     $pdo->exec('ALTER TABLE `' . $table . '` ADD ' . $definition);
 }
 
@@ -428,6 +460,11 @@ function accounting_with_transaction(PDO $pdo, callable $callback): mixed {
     }
 }
 
+function accounting_safe_error_message(Throwable $exception, string $fallback): string {
+    if ($exception instanceof PDOException) return $fallback;
+    return $exception instanceof RuntimeException ? $exception->getMessage() : $fallback;
+}
+
 function accounting_audit(PDO $pdo, string $action, string $entityType, ?int $entityId, ?array $previous = null, ?array $next = null, ?int $userId = null): void {
     $statement = $pdo->prepare(
         'INSERT INTO accounting_audit_log (user_id, action, entity_type, entity_id, previous_data, next_data, ip_address, user_agent)
@@ -449,4 +486,6 @@ require_once __DIR__ . '/accounting_accounts.php';
 require_once __DIR__ . '/accounting_categories.php';
 require_once __DIR__ . '/accounting_allocations.php';
 require_once __DIR__ . '/accounting_operations.php';
+require_once __DIR__ . '/accounting_stock.php';
+require_once __DIR__ . '/accounting_delivery.php';
 require_once __DIR__ . '/accounting_reports.php';

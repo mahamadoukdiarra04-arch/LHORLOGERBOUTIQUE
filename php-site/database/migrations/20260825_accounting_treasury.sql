@@ -9,9 +9,11 @@
 -- Deployment procedure:
 -- 1. Deploy the PHP source containing this migration and app/accounting.php.
 -- 2. Sign in as a manager and open /admin/accounting.php once.
--- 3. Confirm one row in accounting_schema_migrations:
+-- 3. Confirm two rows in accounting_schema_migrations:
 --      20260825_accounting_foundation
--- 4. Confirm that accounting_accounts remains empty until real opening
+--      20260825_accounting_delivery
+-- 4. Confirm that the source indexes on stock_movements are unique and that
+--    accounting_accounts remains empty until real opening
 --    balances are entered in the next phase.
 --
 -- The equivalent clean-install DDL lives in ../schema.sql. Do not run a

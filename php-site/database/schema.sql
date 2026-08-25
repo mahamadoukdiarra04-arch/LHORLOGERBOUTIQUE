@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS stock_movements (
   skip_reason VARCHAR(500) NULL,
   actor VARCHAR(20) NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_stock_product_date (product_id, created_at), INDEX idx_stock_order_source (order_id, movement_type), INDEX idx_stock_direct_sale_source (direct_sale_item_id, movement_type),
+  INDEX idx_stock_product_date (product_id, created_at), UNIQUE INDEX idx_stock_order_source (order_id, movement_type), UNIQUE INDEX idx_stock_direct_sale_source (direct_sale_item_id, movement_type),
   CONSTRAINT fk_stock_product FOREIGN KEY (product_id) REFERENCES products(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
