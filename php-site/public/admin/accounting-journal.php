@@ -8,6 +8,7 @@ try {
     $journal = accounting_journal_page($pdo, $filters);
     $accounts = accounting_list_accounts($pdo, false);
     $categories = accounting_list_categories($pdo, false);
+    $products = $pdo->query('SELECT id, name FROM products ORDER BY name ASC, id ASC')->fetchAll();
 } catch (Throwable $exception) {
     error_log('L’Horloger: journal comptable indisponible.');
     $journalError = accounting_safe_error_message($exception, 'Le Journal ne peut pas être préparé pour le moment.');
@@ -22,6 +23,7 @@ require APP_ROOT . '/templates/admin-header.php';
   <label>Du<input type="date" name="start" value="<?= e($_GET['start'] ?? '') ?>"></label><label>Au<input type="date" name="end" value="<?= e($_GET['end'] ?? '') ?>"></label>
   <label>Compte<select name="account_id"><option value="">Tous</option><?php foreach ($accounts as $account): ?><option value="<?= (int) $account['id'] ?>" <?= $filters['account_id'] === (int) $account['id'] ? 'selected' : '' ?>><?= e($account['name']) ?></option><?php endforeach; ?></select></label>
   <label>Catégorie<select name="category_id"><option value="">Toutes</option><?php foreach ($categories as $category): ?><option value="<?= (int) $category['id'] ?>" <?= $filters['category_id'] === (int) $category['id'] ? 'selected' : '' ?>><?= e($category['name']) ?></option><?php endforeach; ?></select></label>
+  <label>Produit<select name="product_id"><option value="">Tous</option><?php foreach ($products as $product): ?><option value="<?= (int) $product['id'] ?>" <?= $filters['product_id'] === (int) $product['id'] ? 'selected' : '' ?>><?= e($product['name']) ?></option><?php endforeach; ?></select></label>
   <label>Nature<select name="nature"><option value="">Toutes</option><option value="receipt" <?= $filters['nature'] === 'receipt' ? 'selected' : '' ?>>Encaissement</option><option value="disbursement" <?= $filters['nature'] === 'disbursement' ? 'selected' : '' ?>>Décaissement</option><option value="transfer" <?= $filters['nature'] === 'transfer' ? 'selected' : '' ?>>Transfert</option></select></label>
   <label>État<select name="status"><option value="">Tous</option><option value="confirmed" <?= $filters['status'] === 'confirmed' ? 'selected' : '' ?>>Confirmé</option><option value="draft" <?= $filters['status'] === 'draft' ? 'selected' : '' ?>>Brouillon</option></select></label>
   <label class="wide">Recherche<input name="q" maxlength="120" value="<?= e($filters['q'] ?? '') ?>" placeholder="Référence, libellé, client…"></label>

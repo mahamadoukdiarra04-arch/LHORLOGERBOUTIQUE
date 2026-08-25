@@ -19,6 +19,7 @@ function accounting_journal_filters(array $input): array {
     if ($status !== '' && !in_array($status, $options['status'], true)) throw new RuntimeException('Filtre de statut invalide.');
     $accountId = trim((string) ($input['account_id'] ?? ''));
     $categoryId = trim((string) ($input['category_id'] ?? ''));
+    $productId = trim((string) ($input['product_id'] ?? ''));
     $query = accounting_optional_text($input['q'] ?? null, 'La recherche', 120);
     $start = trim((string) ($input['start'] ?? ''));
     $end = trim((string) ($input['end'] ?? ''));
@@ -32,6 +33,7 @@ function accounting_journal_filters(array $input): array {
         'status' => $status,
         'account_id' => $accountId === '' ? null : accounting_integer($accountId, 'Le compte', 1),
         'category_id' => $categoryId === '' ? null : accounting_integer($categoryId, 'La catégorie', 1),
+        'product_id' => $productId === '' ? null : accounting_integer($productId, 'Le produit', 1),
         'q' => $query,
         'start_at' => $period[0],
         'end_at' => $period[1],
@@ -61,6 +63,10 @@ function accounting_journal_page(PDO $pdo, array $filters): array {
     if (($filters['category_id'] ?? null) !== null) {
         $where[] = 'o.category_id = ?';
         $params[] = $filters['category_id'];
+    }
+    if (($filters['product_id'] ?? null) !== null) {
+        $where[] = 'EXISTS (SELECT 1 FROM accounting_allocations product_allocation WHERE product_allocation.operation_id = o.id AND product_allocation.product_id = ?)';
+        $params[] = $filters['product_id'];
     }
     if (($filters['start_at'] ?? null) !== null) {
         $where[] = 'o.effective_at >= ?';
