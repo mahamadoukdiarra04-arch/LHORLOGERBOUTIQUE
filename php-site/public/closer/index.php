@@ -28,6 +28,21 @@ function closer_whatsapp_link(array $order, string $number): string {
         . "Total à la réception : " . money((int) $order['quantity'] * (int) $order['unit_price_fcfa']);
     return 'https://wa.me/' . rawurlencode($phone) . '?text=' . rawurlencode($message);
 }
+function closer_relative_time(string $value): string {
+    try {
+        $then = new DateTimeImmutable($value, accounting_bamako_timezone());
+        $now = new DateTimeImmutable('now', accounting_bamako_timezone());
+        $minutes = max(0, intdiv($now->getTimestamp() - $then->getTimestamp(), 60));
+        if ($minutes < 2) return 'à l’instant';
+        if ($minutes < 60) return 'il y a ' . $minutes . ' min';
+        $hours = intdiv($minutes, 60);
+        if ($hours < 24) return 'il y a ' . $hours . ' h';
+        $days = intdiv($hours, 24);
+        return $days === 1 ? 'il y a 1 jour' : 'il y a ' . $days . ' jours';
+    } catch (Throwable) {
+        return 'date indisponible';
+    }
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
@@ -105,16 +120,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $catalog = catalog();
 $courierWhatsapp = trim((string) app_setting('courier_whatsapp', ''));
 $courierReady = preg_match('/^\d{8,15}$/', preg_replace('/\D+/', '', $courierWhatsapp)) === 1;
+$newSearch = trim((string) ($_GET['new_q'] ?? ''));
+if (mb_strlen($newSearch) > 80) $newSearch = mb_substr($newSearch, 0, 80);
+$newPage = filter_var($_GET['new_page'] ?? 1, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 1;
+$newPerPage = 8;
+$newWhere = ["o.status = 'À confirmer'", 't.order_id IS NULL'];
+$newParams = [];
+if ($newSearch !== '') {
+    $newWhere[] = 'CONCAT(o.customer_first_name, " ", o.customer_last_name, " ", o.phone, " ", o.district, " ", o.product_name, " ", o.variant, " ", o.order_ref) LIKE ?';
+    $newParams[] = '%' . $newSearch . '%';
+}
+$newWhereSql = implode(' AND ', $newWhere);
+$newCountStatement = $pdo->prepare(
+    'SELECT COUNT(*) FROM orders o
+     LEFT JOIN order_closer_tracking t ON t.order_id = o.id
+     WHERE ' . $newWhereSql
+);
+$newCountStatement->execute($newParams);
+$newOrdersTotal = (int) $newCountStatement->fetchColumn();
+$newPages = max(1, intdiv($newOrdersTotal + $newPerPage - 1, $newPerPage));
+$newPage = min($newPage, $newPages);
+$newOffset = ($newPage - 1) * $newPerPage;
 $newOrdersStatement = $pdo->prepare(
     "SELECT o.*, p.slug, t.closer_identity AS assigned_to
      FROM orders o
      JOIN products p ON p.id = o.product_id
      LEFT JOIN order_closer_tracking t ON t.order_id = o.id
-     WHERE o.status = 'À confirmer'
-       AND t.order_id IS NULL
-     ORDER BY o.created_at DESC"
+     WHERE $newWhereSql
+     ORDER BY o.created_at ASC, o.id ASC
+     LIMIT $newPerPage OFFSET $newOffset"
 );
-$newOrdersStatement->execute();
+$newOrdersStatement->execute($newParams);
 $newOrders = $newOrdersStatement->fetchAll();
 $myOrdersStatement = $pdo->prepare(
     "SELECT o.*, p.slug, t.follow_up_status, t.follow_up_at, t.note, t.whatsapp_prepared_at, t.updated_at AS tracking_updated_at
@@ -122,6 +158,10 @@ $myOrdersStatement = $pdo->prepare(
      JOIN orders o ON o.id = t.order_id
      JOIN products p ON p.id = o.product_id
      WHERE t.closer_identity = ?
+       AND (
+           t.follow_up_status IN ('À appeler', 'À rappeler', 'Injoignable')
+           OR (t.follow_up_status = 'Confirmée' AND (t.whatsapp_prepared_at IS NULL OR DATE(t.updated_at) = CURDATE()))
+       )
      ORDER BY FIELD(t.follow_up_status, 'À appeler', 'À rappeler', 'Injoignable', 'Confirmée', 'Annulée'),
               t.follow_up_at IS NULL, t.follow_up_at, t.updated_at DESC"
 );
@@ -148,7 +188,7 @@ require APP_ROOT . '/templates/closer-header.php';
   <div><p class="closer-kicker">Espace closeuse</p><h1>Mes ventes à confirmer.</h1><p>Appelez, notez le résultat puis préparez les commandes validées pour le livreur.</p></div>
 </header>
 <section class="closer-metrics">
-  <article class="closer-metric"><span>Nouvelles à traiter</span><strong><?= count($newOrders) ?></strong></article>
+  <article class="closer-metric"><span>Nouvelles à traiter</span><strong><?= $newOrdersTotal ?></strong></article>
   <article class="closer-metric"><span>Dans mon suivi</span><strong><?= count($myOrders) ?></strong></article>
   <article class="closer-metric"><span>À rappeler</span><strong><?= $followUpCount ?></strong></article>
   <article class="closer-metric"><span>Confirmées aujourd’hui</span><strong><?= $confirmedToday ?></strong></article>
@@ -193,13 +233,16 @@ require APP_ROOT . '/templates/closer-header.php';
     </div>
   </section>
   <aside class="closer-panel">
-    <div class="closer-panel__head"><div><h2>Nouvelles commandes</h2><p>Ajoutez celles que vous prenez en charge.</p></div></div>
-    <div class="closer-orders">
+    <div class="closer-panel__head"><div><h2>Nouvelles commandes</h2><p>Priorité aux commandes les plus anciennes. Prenez-les une par une pour garder votre suivi net.</p></div><span class="closer-count"><?= $newOrdersTotal ?> en attente</span></div>
+    <form class="closer-queue-tools" method="get" role="search"><label for="new-order-search">Rechercher une commande</label><div><input id="new-order-search" name="new_q" value="<?= e($newSearch) ?>" maxlength="80" placeholder="Client, téléphone, quartier…"><button class="closer-button secondary" type="submit">Filtrer</button></div></form>
+    <p class="closer-queue-summary"><?= $newOrdersTotal === 0 ? 'Aucune commande ne correspond.' : 'Commandes ' . (($newOffset + 1)) . ' à ' . min($newOffset + $newPerPage, $newOrdersTotal) . ' sur ' . $newOrdersTotal ?></p>
+    <div class="closer-orders closer-queue">
       <?php foreach ($newOrders as $order): ?>
-        <article class="closer-order"><img class="closer-order__image" src="<?= e(url('/' . closer_image($order, $catalog))) ?>" alt="<?= e($order['product_name']) ?>"><div class="closer-order__content"><div class="closer-order__top"><div><h3><?= e($order['customer_first_name'] . ' ' . $order['customer_last_name']) ?></h3><p><?= e($order['order_ref']) ?> · <?= e($order['product_name']) ?></p></div></div><div class="closer-order__facts"><span><?= e($order['variant']) ?> · Qté <?= (int) $order['quantity'] ?></span><span><a href="tel:<?= e($order['phone']) ?>"><b><?= e($order['phone']) ?></b></a></span><span><?= e($order['district']) ?></span></div><?php if (($order['assigned_to'] ?? '') === $closer): ?><span class="closer-pill is-followup">Déjà dans votre suivi</span><?php else: ?><form method="post"><?= csrf_field() ?><input type="hidden" name="action" value="claim"><input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>"><button class="closer-button" type="submit">Ajouter à mon suivi</button></form><?php endif; ?></div></article>
+        <article class="closer-order closer-order--queue"><img class="closer-order__image" src="<?= e(url('/' . closer_image($order, $catalog))) ?>" alt="<?= e($order['product_name']) ?>"><div class="closer-order__content"><div class="closer-order__top"><div><h3><?= e($order['customer_first_name'] . ' ' . $order['customer_last_name']) ?></h3><p><?= e($order['product_name']) ?> · <?= e($order['variant']) ?></p></div><span class="closer-age"><?= e(closer_relative_time((string) $order['created_at'])) ?></span></div><div class="closer-order__facts"><span><a href="tel:<?= e($order['phone']) ?>"><b><?= e($order['phone']) ?></b></a></span><span><?= e($order['district']) ?></span><span>Qté <?= (int) $order['quantity'] ?></span></div><form method="post"><?= csrf_field() ?><input type="hidden" name="action" value="claim"><input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>"><button class="closer-button" type="submit">Prendre en charge</button></form></div></article>
       <?php endforeach; ?>
       <?php if (!$newOrders): ?><p class="closer-empty">Aucune nouvelle commande à appeler pour le moment.</p><?php endif; ?>
     </div>
+    <?php if ($newPages > 1): ?><nav class="closer-pagination" aria-label="Pages des nouvelles commandes"><?php if ($newPage > 1): ?><a href="?<?= e(http_build_query(['new_q' => $newSearch, 'new_page' => $newPage - 1])) ?>">← Précédentes</a><?php endif; ?><span>Page <?= $newPage ?> / <?= $newPages ?></span><?php if ($newPage < $newPages): ?><a href="?<?= e(http_build_query(['new_q' => $newSearch, 'new_page' => $newPage + 1])) ?>">Suivantes →</a><?php endif; ?></nav><?php endif; ?>
     <div style="margin-top:22px"><div class="closer-panel__head"><div><h2>Mon historique</h2><p>Vos dernières actions.</p></div></div><ul class="closer-history"><?php foreach ($history as $event): ?><li><strong><?= e($event['event_type']) ?> · <?= e($event['order_ref']) ?></strong><span><?= e($event['customer_first_name'] . ' ' . $event['customer_last_name']) ?> · <?= e(date('d/m/Y H:i', strtotime($event['created_at']))) ?><?= $event['note'] ? ' · ' . e($event['note']) : '' ?></span></li><?php endforeach; ?><?php if (!$history): ?><li><span>Aucune action enregistrée.</span></li><?php endif; ?></ul></div>
   </aside>
 </div>
