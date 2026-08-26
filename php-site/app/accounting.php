@@ -402,7 +402,9 @@ function accounting_bamako_timezone(): DateTimeZone {
 
 function accounting_effective_at(mixed $value, string $label = 'La date'): string {
     $raw = trim((string) $value);
-    $formats = ['!Y-m-d H:i:s', '!Y-m-d H:i', '!Y-m-d'];
+    // datetime-local submits an ISO value with a literal "T" (for example 2026-08-26T14:30).
+    // Keep accepting stored/database values with a space as well.
+    $formats = ['!Y-m-d\\TH:i:s', '!Y-m-d\\TH:i', '!Y-m-d H:i:s', '!Y-m-d H:i', '!Y-m-d'];
     foreach ($formats as $format) {
         $date = DateTimeImmutable::createFromFormat($format, $raw, accounting_bamako_timezone());
         $errors = DateTimeImmutable::getLastErrors();

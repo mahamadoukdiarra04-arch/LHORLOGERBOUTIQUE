@@ -55,6 +55,8 @@ accounting_test_same(4000000000000000000, array_sum($large), 'Les grands montant
 accounting_test_same(2000000000000000000, $large['a'], 'La répartition exacte des grands montants est conservée.');
 
 accounting_test_same('1.250000', accounting_quantity_equivalent('1.25'), 'La quantité analytique conserve six décimales.');
+accounting_test_same('2026-08-26 14:30:00', accounting_effective_at('2026-08-26T14:30'), 'Une date issue d’un champ datetime-local est acceptée.');
+accounting_test_same('2026-08-26 14:30:00', accounting_effective_at('2026-08-26 14:30'), 'Une date comptable avec espace reste acceptée.');
 accounting_test_throws(static fn () => accounting_allocate_largest_remainder(1, [['key' => 'x', 'weight' => 0]]), 'Un poids nul doit être refusé.');
 accounting_test_throws(static fn () => accounting_integer('55 000', 'Montant', 0), 'Un montant formaté doit être refusé au lieu d’être arrondi.');
 accounting_test_same(61000, accounting_historical_cogs_fcfa(2, 30500), 'Le coût figé de la sortie est calculé en FCFA entiers.');
