@@ -123,7 +123,7 @@ $courierReady = preg_match('/^\d{8,15}$/', preg_replace('/\D+/', '', $courierWha
 $newSearch = trim((string) ($_GET['new_q'] ?? ''));
 if (mb_strlen($newSearch) > 80) $newSearch = mb_substr($newSearch, 0, 80);
 $newPage = filter_var($_GET['new_page'] ?? 1, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 1;
-$newPerPage = 8;
+$newPerPage = 3;
 $newWhere = ["o.status = 'À confirmer'", 't.order_id IS NULL'];
 $newParams = [];
 if ($newSearch !== '') {
