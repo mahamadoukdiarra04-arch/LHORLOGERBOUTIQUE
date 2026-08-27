@@ -224,6 +224,19 @@ function ensure_closer_schema(): void {
     if ($ready) return;
 
     $pdo = db();
+    // The closer opens this page many times a day on mobile. Avoid taking a DDL
+    // metadata lock on every request once the three required tables exist.
+    try {
+        $pdo->query('SELECT 1 FROM order_closer_tracking LIMIT 1');
+        $pdo->query('SELECT 1 FROM closer_events LIMIT 1');
+        $pdo->query('SELECT 1 FROM app_settings LIMIT 1');
+        $ready = true;
+        return;
+    } catch (PDOException $exception) {
+        // Only a missing table requires the one-time schema creation below.
+        // Connection, lock and permission failures must remain visible to the caller.
+        if ((string) $exception->getCode() !== '42S02') throw $exception;
+    }
     $pdo->exec(
         "CREATE TABLE IF NOT EXISTS order_closer_tracking (
             order_id BIGINT UNSIGNED NOT NULL PRIMARY KEY,
@@ -258,6 +271,13 @@ function ensure_closer_schema(): void {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
     );
     $ready = true;
+}
+
+function closer_safe_error_message(Throwable $exception): string {
+    if ($exception instanceof PDOException || str_contains($exception->getMessage(), 'SQLSTATE')) {
+        return 'La connexion est momentanément indisponible. Votre action n’a pas été enregistrée. Réessayez dans quelques instants.';
+    }
+    return $exception->getMessage();
 }
 function app_setting(string $key, ?string $default = null): ?string {
     $statement = db()->prepare('SELECT setting_value FROM app_settings WHERE setting_key = ?');

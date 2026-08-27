@@ -15,6 +15,7 @@ $closerPath = $_SERVER['SCRIPT_NAME'] ?? '';
   <link rel="stylesheet" href="<?= e(url('/assets/css/app.css')) ?>">
   <link rel="stylesheet" href="<?= e(url('/assets/css/brand.css')) ?>">
   <link rel="stylesheet" href="<?= e(url('/assets/css/closer.css')) ?>">
+  <script src="<?= e(url('/assets/js/closer.js')) ?>" defer></script>
 </head>
 <body class="closer-body">
   <header class="closer-top">
