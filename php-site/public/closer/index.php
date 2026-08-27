@@ -2,8 +2,15 @@
 require __DIR__ . '/../../app/bootstrap.php';
 require_closer();
 require APP_ROOT . '/catalog.php';
-ensure_closer_schema();
-$pdo = db();
+try {
+    ensure_closer_schema();
+    $pdo = db();
+} catch (Throwable $exception) {
+    error_log('L’Horloger: espace closeuse temporairement indisponible.');
+    http_response_code(503);
+    header('Retry-After: 15');
+    exit('La connexion est momentanément indisponible. Aucune action n’a été enregistrée. Rechargez la page puis réessayez dans quelques instants.');
+}
 $closer = admin_identity();
 $trackingStates = ['À appeler', 'À rappeler', 'Confirmée', 'Injoignable', 'Annulée'];
 $channels = ['Meta', 'Réachat'];
@@ -112,7 +119,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } catch (Throwable $exception) {
         if ($pdo->inTransaction()) $pdo->rollBack();
-        flash('error', $exception->getMessage());
+        error_log('L’Horloger: action closeuse échouée.');
+        flash('error', closer_safe_error_message($exception));
     }
     redirect('/closer/');
 }
