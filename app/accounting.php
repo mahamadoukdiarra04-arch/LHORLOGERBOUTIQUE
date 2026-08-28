@@ -6,6 +6,7 @@ const ACCOUNTING_DELIVERY_VERSION = '20260825_accounting_delivery';
 const ACCOUNTING_VARIANT_STOCK_VERSION = '20260828_variant_stock';
 const ACCOUNTING_DIRECT_SALE_VARIANT_VERSION = '20260828_direct_sale_variant';
 const ACCOUNTING_STOCK_EFFECTIVE_VERSION = '20260828_stock_effective_at';
+const ACCOUNTING_DELIVERY_EXPENSE_CATEGORY_VERSION = '20260828_delivery_expense_category';
 
 /**
  * The accounting foundation is deliberately initialized from PHP as well as
@@ -64,6 +65,13 @@ function ensure_accounting_schema(): void {
             accounting_add_stock_effective_date($pdo);
             $mark = $pdo->prepare('INSERT INTO accounting_schema_migrations (version) VALUES (?)');
             $mark->execute([ACCOUNTING_STOCK_EFFECTIVE_VERSION]);
+        }
+        $deliveryExpenseCategoryApplied = $pdo->prepare('SELECT 1 FROM accounting_schema_migrations WHERE version = ?');
+        $deliveryExpenseCategoryApplied->execute([ACCOUNTING_DELIVERY_EXPENSE_CATEGORY_VERSION]);
+        if (!$deliveryExpenseCategoryApplied->fetchColumn()) {
+            accounting_add_delivery_expense_category($pdo);
+            $mark = $pdo->prepare('INSERT INTO accounting_schema_migrations (version) VALUES (?)');
+            $mark->execute([ACCOUNTING_DELIVERY_EXPENSE_CATEGORY_VERSION]);
         }
         $ready = true;
     } finally {
@@ -411,6 +419,7 @@ function accounting_system_categories(): array {
         ['refund_shop', 'Remboursement boutique', 'disbursement', 'shop_refund', 'shop', 40],
         ['meta_ads', 'Publicité Meta', 'disbursement', 'direct_expense', 'product', 50],
         ['product_service', 'Charge directe produit', 'disbursement', 'direct_expense', 'product', 60],
+        ['delivery_cost', 'Livraison', 'disbursement', 'direct_expense', 'product', 65],
         ['inventory_purchase', 'Achat de stock', 'disbursement', 'inventory', 'product', 70],
         ['inventory_transit', 'Transit de stock', 'disbursement', 'inventory', 'product', 80],
         ['rent', 'Loyer', 'disbursement', 'common_expense', 'shop', 90],
@@ -428,6 +437,16 @@ function accounting_seed_categories(PDO $pdo): void {
          VALUES (?, ?, ?, ?, ?, 1, 1, ?)'
     );
     foreach (accounting_system_categories() as $category) $insert->execute($category);
+}
+
+function accounting_add_delivery_expense_category(PDO $pdo): void {
+    $statement = $pdo->prepare(
+        'INSERT INTO accounting_categories
+         (code, name, direction, treatment, default_scope, is_system, is_active, sort_order)
+         VALUES (?, ?, ?, ?, ?, 1, 1, ?)
+         ON DUPLICATE KEY UPDATE is_active = 1'
+    );
+    $statement->execute(['delivery_cost', 'Livraison', 'disbursement', 'direct_expense', 'product', 65]);
 }
 
 function accounting_foundation_status(): array {

@@ -108,6 +108,15 @@ accounting_test_throws(static fn () => accounting_allocate_remaining_payments([1
 accounting_test_same(25000, accounting_signed_difference(55000, 30000, 'Écart'), 'Un écart de rapprochement positif est calculé en entier.');
 accounting_test_same(-25000, accounting_signed_difference(30000, 55000, 'Écart'), 'Un écart de rapprochement négatif est calculé en entier.');
 accounting_test_throws(static fn () => accounting_normalize_direct_sale_items([]), 'Une vente directe vide doit être refusée.');
+$deliveryExpenseCategory = array_values(array_filter(
+    accounting_system_categories(),
+    static fn (array $category): bool => $category[0] === 'delivery_cost',
+));
+accounting_test_same(
+    [['delivery_cost', 'Livraison', 'disbursement', 'direct_expense', 'product', 65]],
+    $deliveryExpenseCategory,
+    'La livraison doit rester une charge directe affectable à un produit.'
+);
 accounting_test_throws(static fn () => accounting_normalize_direct_sale_items([[
     'product_id' => '1', 'variant_id' => '7', 'quantity' => '1', 'unit_price_fcfa' => '1000', 'discount_fcfa' => '1000',
 ]]), 'Une remise ne peut pas annuler intégralement une montre.');

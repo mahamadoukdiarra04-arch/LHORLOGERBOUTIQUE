@@ -359,6 +359,7 @@ INSERT IGNORE INTO accounting_categories (code, name, direction, treatment, defa
   ('refund_shop', 'Remboursement boutique', 'disbursement', 'shop_refund', 'shop', 1, 1, 40),
   ('meta_ads', 'Publicité Meta', 'disbursement', 'direct_expense', 'product', 1, 1, 50),
   ('product_service', 'Charge directe produit', 'disbursement', 'direct_expense', 'product', 1, 1, 60),
+  ('delivery_cost', 'Livraison', 'disbursement', 'direct_expense', 'product', 1, 1, 65),
   ('inventory_purchase', 'Achat de stock', 'disbursement', 'inventory', 'product', 1, 1, 70),
   ('inventory_transit', 'Transit de stock', 'disbursement', 'inventory', 'product', 1, 1, 80),
   ('rent', 'Loyer', 'disbursement', 'common_expense', 'shop', 1, 1, 90),
