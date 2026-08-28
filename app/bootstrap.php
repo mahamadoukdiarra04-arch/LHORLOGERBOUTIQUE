@@ -299,6 +299,62 @@ function log_closer_event(int $orderId, string $type, ?string $note = null): voi
     $statement->execute([$orderId, admin_identity(), $type, $note]);
 }
 
+/**
+ * Keep the operational follow-up aligned with the order status shared by
+ * management and the closer. Active call states all represent an order that
+ * is still "À confirmer"; terminal states must never remain in an active list.
+ */
+function sync_closer_tracking_for_order_ref(PDO $pdo, string $orderRef): void {
+    $statement = $pdo->prepare(
+        "UPDATE order_closer_tracking t
+         JOIN orders o ON o.id = t.order_id
+         SET t.follow_up_status = CASE
+             WHEN o.status = 'Annulée' THEN 'Annulée'
+             WHEN o.status = 'Livrée' THEN 'Livrée'
+             WHEN o.status IN ('Confirmée', 'En livraison') THEN 'Confirmée'
+             WHEN o.status = 'À confirmer' AND t.follow_up_status IN ('Confirmée', 'Annulée', 'Livrée') THEN 'À appeler'
+             ELSE t.follow_up_status
+         END,
+         t.follow_up_at = CASE
+             WHEN o.status IN ('Annulée', 'Livrée') THEN NULL
+             ELSE t.follow_up_at
+         END
+         WHERE o.order_ref = ?
+           AND (
+             (o.status = 'Annulée' AND t.follow_up_status <> 'Annulée')
+             OR (o.status = 'Livrée' AND t.follow_up_status <> 'Livrée')
+             OR (o.status IN ('Confirmée', 'En livraison') AND t.follow_up_status <> 'Confirmée')
+             OR (o.status = 'À confirmer' AND t.follow_up_status IN ('Confirmée', 'Annulée', 'Livrée'))
+             OR (o.status IN ('Annulée', 'Livrée') AND t.follow_up_at IS NOT NULL)
+           )"
+    );
+    $statement->execute([$orderRef]);
+}
+
+function sync_all_closer_tracking(PDO $pdo): void {
+    $statement = $pdo->prepare(
+        "UPDATE order_closer_tracking t
+         JOIN orders o ON o.id = t.order_id
+         SET t.follow_up_status = CASE
+             WHEN o.status = 'Annulée' THEN 'Annulée'
+             WHEN o.status = 'Livrée' THEN 'Livrée'
+             WHEN o.status IN ('Confirmée', 'En livraison') THEN 'Confirmée'
+             WHEN o.status = 'À confirmer' AND t.follow_up_status IN ('Confirmée', 'Annulée', 'Livrée') THEN 'À appeler'
+             ELSE t.follow_up_status
+         END,
+         t.follow_up_at = CASE
+             WHEN o.status IN ('Annulée', 'Livrée') THEN NULL
+             ELSE t.follow_up_at
+         END
+         WHERE (o.status = 'Annulée' AND t.follow_up_status <> 'Annulée')
+            OR (o.status = 'Livrée' AND t.follow_up_status <> 'Livrée')
+            OR (o.status IN ('Confirmée', 'En livraison') AND t.follow_up_status <> 'Confirmée')
+            OR (o.status = 'À confirmer' AND t.follow_up_status IN ('Confirmée', 'Annulée', 'Livrée'))
+            OR (o.status IN ('Annulée', 'Livrée') AND t.follow_up_at IS NOT NULL)"
+    );
+    $statement->execute();
+}
+
 // Accounting services are inert until a protected manager route invokes them.
 // Loading the definitions here keeps all future admin entry points on the same
 // server-side rules without initializing accounts or financial data.

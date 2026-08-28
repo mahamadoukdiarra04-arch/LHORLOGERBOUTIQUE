@@ -4,6 +4,7 @@ require_manager();
 $pdo = db();
 try {
     ensure_accounting_schema();
+    ensure_closer_schema();
 } catch (Throwable $exception) {
     error_log('L’Horloger: initialisation de la livraison comptable échouée.');
     http_response_code(503);
@@ -24,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash('error', 'Finalisez une livraison depuis son formulaire d’encaissement.');
     } elseif (!in_array($status, orders_statuses_without_delivery(), true)) {
         flash('error', 'Mise à jour impossible.');
-    } elseif ($status !== 'À confirmer' && !in_array($channel, ['Meta', 'Réachat'], true)) {
+    } elseif (in_array($status, ['Confirmée', 'En livraison'], true) && !in_array($channel, ['Meta', 'Réachat'], true)) {
         flash('error', 'Choisissez Meta ou Réachat avant de quitter « À confirmer ».');
     } else {
         try {
@@ -41,8 +42,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new RuntimeException('Une référence déjà livrée ne peut plus être modifiée depuis cette liste.');
                 }
             }
-            $update = $pdo->prepare('UPDATE orders SET status = ?, acquisition_channel = ? WHERE order_ref = ?');
-            $update->execute([$status, $status === 'À confirmer' ? null : $channel, $order['order_ref']]);
+            if ($status === 'Annulée') {
+                $update = $pdo->prepare('UPDATE orders SET status = ? WHERE order_ref = ?');
+                $update->execute([$status, $order['order_ref']]);
+            } else {
+                $update = $pdo->prepare('UPDATE orders SET status = ?, acquisition_channel = ? WHERE order_ref = ?');
+                $update->execute([$status, $status === 'À confirmer' ? null : $channel, $order['order_ref']]);
+            }
+            sync_closer_tracking_for_order_ref($pdo, (string) $order['order_ref']);
             $pdo->commit();
             log_event('commande', 'Commande ' . $order['order_ref'] . ' mise à jour : ' . $status, null, $orderId);
             flash('success', 'Référence de commande mise à jour.');

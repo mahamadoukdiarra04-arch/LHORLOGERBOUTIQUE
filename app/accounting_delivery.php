@@ -138,6 +138,7 @@ function accounting_add_delivery_cogs_allocations(PDO $pdo, int $operationId, ar
 
 function accounting_confirm_delivery(PDO $pdo, int $orderId, array $data, ?int $userId = null): array {
     ensure_accounting_schema();
+    ensure_closer_schema();
     $idempotencyKey = accounting_uuid($data['idempotency_key'] ?? null);
     $effectiveAt = accounting_delivery_effective_at($data['effective_at'] ?? null);
     $exceptionMode = accounting_flag($data['exception_mode'] ?? '0', 'Le mode d’exception');
@@ -254,6 +255,7 @@ function accounting_confirm_delivery(PDO $pdo, int $orderId, array $data, ?int $
         }
         $update = $pdo->prepare('UPDATE orders SET status = "Livrée", stock_processed = 1, delivered_at = ? WHERE order_ref = ?');
         $update->execute([$effectiveAt, $orderRef]);
+        sync_closer_tracking_for_order_ref($pdo, $orderRef);
         if ($paid < $total) {
             $exception = $pdo->prepare(
                 'INSERT INTO accounting_payment_exceptions (order_ref, reason, status, opened_by_user_id, opened_at)

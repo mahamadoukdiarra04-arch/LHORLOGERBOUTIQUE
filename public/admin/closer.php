@@ -3,6 +3,7 @@ require __DIR__ . '/../../app/bootstrap.php';
 require_manager();
 ensure_closer_schema();
 $pdo = db();
+sync_all_closer_tracking($pdo);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
@@ -20,7 +21,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $today = date('Y-m-d');
-$activeCount = (int) $pdo->query("SELECT COUNT(*) FROM order_closer_tracking WHERE follow_up_status IN ('À appeler', 'À rappeler', 'Injoignable')")->fetchColumn();
+$activeCount = (int) $pdo->query(
+    "SELECT COUNT(*)
+     FROM order_closer_tracking t
+     JOIN orders o ON o.id = t.order_id
+     WHERE t.follow_up_status IN ('À appeler', 'À rappeler', 'Injoignable')
+       AND o.status NOT IN ('Annulée', 'Livrée')"
+)->fetchColumn();
 $confirmedStatement = $pdo->prepare("SELECT COUNT(*) FROM order_closer_tracking WHERE follow_up_status = 'Confirmée' AND DATE(updated_at) = ?");
 $confirmedStatement->execute([$today]);
 $confirmedToday = (int) $confirmedStatement->fetchColumn();
@@ -32,7 +39,7 @@ $tracking = $pdo->query(
             o.product_name, o.variant, o.quantity, o.unit_price_fcfa, o.status, o.acquisition_channel
      FROM order_closer_tracking t
      JOIN orders o ON o.id = t.order_id
-     ORDER BY FIELD(t.follow_up_status, 'À appeler', 'À rappeler', 'Injoignable', 'Confirmée', 'Annulée'),
+     ORDER BY FIELD(t.follow_up_status, 'À appeler', 'À rappeler', 'Injoignable', 'Confirmée', 'Annulée', 'Livrée'),
               t.follow_up_at IS NULL, t.follow_up_at, t.updated_at DESC"
 )->fetchAll();
 $courierWhatsapp = (string) app_setting('courier_whatsapp', '');

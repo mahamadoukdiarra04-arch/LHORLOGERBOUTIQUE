@@ -83,6 +83,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif (!$tracking || $tracking['closer_identity'] !== $closer) {
             throw new RuntimeException('Ajoutez d’abord cette commande à votre suivi.');
         } elseif ($action === 'update_follow_up') {
+            if (in_array($order['status'], ['Annulée', 'Livrée'], true)) {
+                throw new RuntimeException('Cette commande est déjà ' . strtolower((string) $order['status']) . ' et a été retirée de votre suivi actif.');
+            }
             $state = (string) ($_POST['follow_up_status'] ?? '');
             $note = trim((string) ($_POST['note'] ?? ''));
             $followUp = closer_datetime((string) ($_POST['follow_up_at'] ?? ''));
@@ -101,7 +104,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $updateOrder = $pdo->prepare("UPDATE orders SET status = 'Annulée' WHERE order_ref = ?");
                 $updateOrder->execute([$order['order_ref']]);
                 log_event('commande', 'Annulée par ' . $closer, (int) $order['product_id'], $orderId);
+            } else {
+                $updateOrder = $pdo->prepare("UPDATE orders SET status = 'À confirmer', acquisition_channel = NULL WHERE order_ref = ?");
+                $updateOrder->execute([$order['order_ref']]);
             }
+            sync_closer_tracking_for_order_ref($pdo, (string) $order['order_ref']);
             log_closer_event($orderId, $state, $note !== '' ? $note : null);
             $pdo->commit();
             flash('success', 'Suivi de commande mis à jour.');
@@ -166,6 +173,7 @@ $myOrdersStatement = $pdo->prepare(
      JOIN orders o ON o.id = t.order_id
      JOIN products p ON p.id = o.product_id
      WHERE t.closer_identity = ?
+       AND o.status NOT IN ('Annulée', 'Livrée')
        AND (
            t.follow_up_status IN ('À appeler', 'À rappeler', 'Injoignable')
            OR (t.follow_up_status = 'Confirmée' AND (t.whatsapp_prepared_at IS NULL OR DATE(t.updated_at) = CURDATE()))
@@ -186,7 +194,14 @@ $today = date('Y-m-d');
 $confirmedCountStatement = $pdo->prepare("SELECT COUNT(*) FROM order_closer_tracking WHERE closer_identity = ? AND follow_up_status = 'Confirmée' AND DATE(updated_at) = ?");
 $confirmedCountStatement->execute([$closer, $today]);
 $confirmedToday = (int) $confirmedCountStatement->fetchColumn();
-$followUpCountStatement = $pdo->prepare("SELECT COUNT(*) FROM order_closer_tracking WHERE closer_identity = ? AND follow_up_status = 'À rappeler'");
+$followUpCountStatement = $pdo->prepare(
+    "SELECT COUNT(*)
+     FROM order_closer_tracking t
+     JOIN orders o ON o.id = t.order_id
+     WHERE t.closer_identity = ?
+       AND t.follow_up_status = 'À rappeler'
+       AND o.status NOT IN ('Annulée', 'Livrée')"
+);
 $followUpCountStatement->execute([$closer]);
 $followUpCount = (int) $followUpCountStatement->fetchColumn();
 $closerPageTitle = 'Mon suivi';
