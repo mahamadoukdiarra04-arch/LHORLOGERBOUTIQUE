@@ -164,14 +164,18 @@ function accounting_stock_record_movement(PDO $pdo, array $data): array {
     $note = accounting_optional_text($data['note'] ?? null, 'La note', 255);
     $skipReason = accounting_optional_text($data['skip_reason'] ?? null, 'Le motif', 500);
     $actor = accounting_optional_text($data['actor'] ?? admin_identity(), 'L’auteur', 20);
+    $effectiveAt = accounting_effective_at(
+        $data['effective_at'] ?? (new DateTimeImmutable('now', accounting_bamako_timezone()))->format('Y-m-d H:i:s'),
+        'La date du mouvement de stock'
+    );
     $insert = $pdo->prepare(
         'INSERT INTO stock_movements
-         (product_id, variant_id, order_id, direct_sale_item_id, operation_group_id, movement_type, quantity, purchase_price_fcfa, transit_price_fcfa, unit_cost_fcfa, unit_cost_snapshot_fcfa, sale_unit_price_fcfa, note, skip_reason, actor)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+         (product_id, variant_id, order_id, direct_sale_item_id, operation_group_id, movement_type, quantity, purchase_price_fcfa, transit_price_fcfa, unit_cost_fcfa, unit_cost_snapshot_fcfa, sale_unit_price_fcfa, note, skip_reason, actor, effective_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     );
     $insert->execute([
         $productId, $variantId, $orderId, $directSaleItemId, $groupId, $movementType, $storedQuantity, $purchase, $transit,
-        $unitCost, $unitCostSnapshot, $saleUnitPrice, $note, $skipReason, $actor,
+        $unitCost, $unitCostSnapshot, $saleUnitPrice, $note, $skipReason, $actor, $effectiveAt,
     ]);
     return [
         'id' => (int) $pdo->lastInsertId(),
@@ -181,6 +185,7 @@ function accounting_stock_record_movement(PDO $pdo, array $data): array {
         'variant_name' => $variant['name'] ?? null,
         'movement_type' => $movementType,
         'quantity' => $storedQuantity,
+        'effective_at' => $effectiveAt,
         'unit_cost_snapshot_fcfa' => $unitCostSnapshot,
     ];
 }

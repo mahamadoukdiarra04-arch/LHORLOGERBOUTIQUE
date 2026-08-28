@@ -33,6 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'quantity' => $_POST['quantity'] ?? null,
                     'purchase_price_fcfa' => $_POST['purchase_price'] ?? null,
                     'transit_price_fcfa' => $_POST['transit_price'] ?? null,
+                    'effective_at' => $_POST['effective_at'] ?? null,
                     'note' => $_POST['note'] ?? null,
                     'actor' => admin_identity(),
                 ]);
@@ -143,7 +144,7 @@ $eventsStatement = $pdo->prepare(
      JOIN products p ON p.id = sm.product_id
      LEFT JOIN product_variants pv ON pv.id = sm.variant_id
      WHERE sm.product_id = ?
-     ORDER BY sm.created_at DESC
+     ORDER BY COALESCE(sm.effective_at, sm.created_at) DESC, sm.id DESC
      LIMIT 100'
 );
 $eventsStatement->execute([$selected]);
@@ -258,6 +259,7 @@ require APP_ROOT . '/templates/admin-header.php';
         <label>Quantité<input type="number" name="quantity" min="1" required></label>
         <label>Prix d’achat<input type="number" name="purchase_price" min="0" placeholder="Réassort"></label>
         <label>Prix de transit<input type="number" name="transit_price" min="0" placeholder="Réassort"></label>
+        <label>Date du mouvement<input type="datetime-local" name="effective_at" value="<?= e((new DateTimeImmutable('now', accounting_bamako_timezone()))->format('Y-m-d\TH:i')) ?>" required></label>
         <label class="wide">Note (facultatif)<input name="note" maxlength="255" placeholder="Ex. arrivage d’août"></label>
         <button class="admin-button">Enregistrer</button>
       </form>
@@ -310,7 +312,7 @@ require APP_ROOT . '/templates/admin-header.php';
         <div class="event">
           <span>
             <strong><?= e($event['movement_type']) ?></strong>
-            <small><?= e(date('d/m/Y H:i', strtotime($event['created_at']))) ?><?= $event['variant_name'] ? ' · ' . e($event['variant_name']) : ' · Modèle non ventilé' ?></small>
+            <small><?= e(date('d/m/Y H:i', strtotime($event['effective_at'] ?? $event['created_at']))) ?><?= $event['variant_name'] ? ' · ' . e($event['variant_name']) : ' · Modèle non ventilé' ?></small>
           </span>
           <strong><?= $event['quantity'] > 0 ? '+' : '' ?><?= (int) $event['quantity'] ?> unité(s)</strong>
           <span>

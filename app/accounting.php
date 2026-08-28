@@ -4,6 +4,7 @@ declare(strict_types=1);
 const ACCOUNTING_FOUNDATION_VERSION = '20260825_accounting_foundation';
 const ACCOUNTING_DELIVERY_VERSION = '20260825_accounting_delivery';
 const ACCOUNTING_VARIANT_STOCK_VERSION = '20260828_variant_stock';
+const ACCOUNTING_STOCK_EFFECTIVE_VERSION = '20260828_stock_effective_at';
 
 /**
  * The accounting foundation is deliberately initialized from PHP as well as
@@ -48,6 +49,13 @@ function ensure_accounting_schema(): void {
             accounting_add_variant_stock_support($pdo);
             $mark = $pdo->prepare('INSERT INTO accounting_schema_migrations (version) VALUES (?)');
             $mark->execute([ACCOUNTING_VARIANT_STOCK_VERSION]);
+        }
+        $stockEffectiveApplied = $pdo->prepare('SELECT 1 FROM accounting_schema_migrations WHERE version = ?');
+        $stockEffectiveApplied->execute([ACCOUNTING_STOCK_EFFECTIVE_VERSION]);
+        if (!$stockEffectiveApplied->fetchColumn()) {
+            accounting_add_stock_effective_date($pdo);
+            $mark = $pdo->prepare('INSERT INTO accounting_schema_migrations (version) VALUES (?)');
+            $mark->execute([ACCOUNTING_STOCK_EFFECTIVE_VERSION]);
         }
         $ready = true;
     } finally {
@@ -308,6 +316,16 @@ function accounting_add_variant_stock_support(PDO $pdo): void {
          SET sm.variant_id = pv.id
          WHERE sm.variant_id IS NULL AND sm.order_id IS NOT NULL'
     );
+}
+
+/**
+ * A stock entry can be recorded after the physical event. Keep its business
+ * date separate from the immutable technical creation timestamp.
+ */
+function accounting_add_stock_effective_date(PDO $pdo): void {
+    accounting_add_column_if_missing($pdo, 'stock_movements', 'effective_at', 'DATETIME NULL AFTER actor');
+    $pdo->exec('UPDATE stock_movements SET effective_at = created_at WHERE effective_at IS NULL');
+    accounting_add_index_if_missing($pdo, 'stock_movements', 'idx_stock_product_effective', 'INDEX idx_stock_product_effective (product_id, effective_at)');
 }
 
 function accounting_seed_product_variants(PDO $pdo): void {

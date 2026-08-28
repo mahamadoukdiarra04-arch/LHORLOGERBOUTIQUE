@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS orders (
 CREATE TABLE IF NOT EXISTS stock_movements (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   product_id INT UNSIGNED NOT NULL,
+  variant_id INT UNSIGNED NULL,
   order_id BIGINT UNSIGNED NULL,
   direct_sale_item_id BIGINT UNSIGNED NULL,
   operation_group_id BIGINT UNSIGNED NULL,
@@ -59,8 +60,9 @@ CREATE TABLE IF NOT EXISTS stock_movements (
   note VARCHAR(255) NULL,
   skip_reason VARCHAR(500) NULL,
   actor VARCHAR(20) NULL,
+  effective_at DATETIME NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_stock_product_date (product_id, created_at), INDEX idx_stock_variant_date (variant_id, created_at), UNIQUE INDEX idx_stock_order_source (order_id, movement_type), UNIQUE INDEX idx_stock_direct_sale_source (direct_sale_item_id, movement_type),
+  INDEX idx_stock_product_date (product_id, created_at), INDEX idx_stock_product_effective (product_id, effective_at), INDEX idx_stock_variant_date (variant_id, created_at), UNIQUE INDEX idx_stock_order_source (order_id, movement_type), UNIQUE INDEX idx_stock_direct_sale_source (direct_sale_item_id, movement_type),
   CONSTRAINT fk_stock_product FOREIGN KEY (product_id) REFERENCES products(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
