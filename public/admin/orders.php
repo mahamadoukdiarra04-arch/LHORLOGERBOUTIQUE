@@ -56,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             error_log('L’Horloger: mise à jour de commande échouée.');
         }
     }
-    redirect('/admin/orders.php?order=' . $orderId);
+    redirect('/admin/orders.php?order=' . $orderId . '#order-detail-' . $orderId);
 }
 
 $statusFilter = (string) ($_GET['status'] ?? '');
@@ -127,10 +127,10 @@ require APP_ROOT . '/templates/admin-header.php';
     <td><?= e($order['acquisition_channel'] ?? 'À renseigner') ?></td>
     <td><span class="status <?= $order['status'] === 'Livrée' ? 'delivered' : ($order['status'] === 'En livraison' ? 'delivery' : '') ?>"><?= e($order['status']) ?></span></td>
     <td><strong><?= money($order['unit_price_fcfa'] * $order['quantity']) ?></strong></td>
-    <td><a class="text-link" href="?<?= e(http_build_query(['q' => $search, 'status' => $statusFilter, 'order' => $order['id']])) ?>">Détails</a></td>
+    <td><a class="text-link" href="?<?= e(http_build_query(['q' => $search, 'status' => $statusFilter, 'order' => $order['id']])) ?>#order-detail-<?= (int) $order['id'] ?>">Détails</a></td>
   </tr>
   <?php if ($selected === (int) $order['id']): ?>
-    <tr><td colspan="7"><section class="order-detail">
+    <tr id="order-detail-<?= (int) $order['id'] ?>" class="order-detail-row"><td colspan="7"><section class="order-detail">
       <div class="order-detail-grid">
         <div class="fact"><span>Coloris</span><b><?= e($order['variant']) ?></b></div><div class="fact"><span>Quantité</span><b><?= (int) $order['quantity'] ?></b></div>
         <div class="fact"><span>Prix unitaire</span><b><?= money($order['unit_price_fcfa']) ?></b></div><div class="fact"><span>Livraison</span><b>Offerte à Bamako</b></div>
