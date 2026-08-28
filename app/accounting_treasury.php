@@ -136,6 +136,62 @@ function accounting_create_disbursement(PDO $pdo, array $data, ?int $userId = nu
     });
 }
 
+/**
+ * Records money put into a real treasury account by an owner or associate.
+ * This is deliberately separate from sales: it affects the account balance,
+ * but never revenue, product profitability, or turnover.
+ */
+function accounting_create_owner_contribution(PDO $pdo, array $data, ?int $userId = null): array {
+    ensure_accounting_schema();
+    $idempotencyKey = accounting_uuid($data['idempotency_key'] ?? null);
+    $status = (string) ($data['status'] ?? 'confirmed');
+    if (!in_array($status, ['draft', 'confirmed'], true)) throw new RuntimeException('Statut d’apport invalide.');
+    $effectiveAt = accounting_effective_at($data['effective_at'] ?? null, 'La date de l’apport');
+
+    return accounting_with_transaction($pdo, function () use ($pdo, $data, $userId, $idempotencyKey, $status, $effectiveAt): array {
+        $accountId = accounting_integer($data['account_id'] ?? null, 'Le compte à alimenter', 1);
+        accounting_require_active_account($pdo, $accountId, true);
+        $amount = accounting_integer($data['amount_fcfa'] ?? null, 'Le montant de l’apport', 1);
+        $contributor = accounting_non_empty_text($data['counterparty'] ?? null, 'Le nom de l’associé', 180);
+        $note = accounting_optional_text($data['note'] ?? null, 'La note', 5000);
+        $category = accounting_category_by_code($pdo, 'owner_contribution', true);
+
+        $groupResult = accounting_create_operation_group($pdo, [
+            'group_type' => 'manual',
+            'idempotency_key' => $idempotencyKey,
+        ], $userId);
+        if ($groupResult['replayed']) {
+            $existing = $pdo->prepare('SELECT id FROM accounting_operations WHERE group_id = ? ORDER BY id ASC LIMIT 1');
+            $existing->execute([(int) $groupResult['group']['id']]);
+            $operationId = (int) $existing->fetchColumn();
+            if ($operationId < 1) throw new RuntimeException('Cette confirmation est incomplète. Rechargez la page avant de réessayer.');
+            return ['group' => $groupResult['group'], 'operation' => accounting_find_operation($pdo, $operationId), 'replayed' => true];
+        }
+
+        $operation = accounting_create_draft_operation($pdo, [
+            'group_id' => $groupResult['group']['id'],
+            'nature' => 'receipt',
+            'account_id' => $accountId,
+            'category_id' => $category['id'],
+            'source_type' => 'manual',
+            'amount_fcfa' => $amount,
+            'effective_at' => $effectiveAt,
+            'label' => 'Apport associé · ' . $contributor,
+            'counterparty' => $contributor,
+            'payment_reference' => $data['payment_reference'] ?? null,
+            'note' => $note,
+        ], $userId);
+        accounting_replace_draft_allocations($pdo, (int) $operation['id'], [[
+            'category_id' => $category['id'],
+            'scope' => 'shop',
+            'amount_fcfa' => $amount,
+        ]], $userId);
+        if ($status === 'confirmed') $operation = accounting_confirm_operation($pdo, (int) $operation['id'], $userId)['operation'];
+        accounting_audit($pdo, 'create_owner_contribution', 'operation', (int) $operation['id'], null, ['status' => $status, 'amount_fcfa' => $amount], $userId);
+        return ['group' => $groupResult['group'], 'operation' => $operation, 'replayed' => false];
+    });
+}
+
 function accounting_confirm_draft_disbursement(PDO $pdo, int $operationId, array $data, ?int $userId = null): array {
     ensure_accounting_schema();
     return accounting_with_transaction($pdo, function () use ($pdo, $operationId, $data, $userId): array {
