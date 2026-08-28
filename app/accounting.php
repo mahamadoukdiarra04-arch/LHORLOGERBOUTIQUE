@@ -4,6 +4,7 @@ declare(strict_types=1);
 const ACCOUNTING_FOUNDATION_VERSION = '20260825_accounting_foundation';
 const ACCOUNTING_DELIVERY_VERSION = '20260825_accounting_delivery';
 const ACCOUNTING_VARIANT_STOCK_VERSION = '20260828_variant_stock';
+const ACCOUNTING_DIRECT_SALE_VARIANT_VERSION = '20260828_direct_sale_variant';
 const ACCOUNTING_STOCK_EFFECTIVE_VERSION = '20260828_stock_effective_at';
 
 /**
@@ -49,6 +50,13 @@ function ensure_accounting_schema(): void {
             accounting_add_variant_stock_support($pdo);
             $mark = $pdo->prepare('INSERT INTO accounting_schema_migrations (version) VALUES (?)');
             $mark->execute([ACCOUNTING_VARIANT_STOCK_VERSION]);
+        }
+        $directSaleVariantApplied = $pdo->prepare('SELECT 1 FROM accounting_schema_migrations WHERE version = ?');
+        $directSaleVariantApplied->execute([ACCOUNTING_DIRECT_SALE_VARIANT_VERSION]);
+        if (!$directSaleVariantApplied->fetchColumn()) {
+            accounting_add_direct_sale_variant_support($pdo);
+            $mark = $pdo->prepare('INSERT INTO accounting_schema_migrations (version) VALUES (?)');
+            $mark->execute([ACCOUNTING_DIRECT_SALE_VARIANT_VERSION]);
         }
         $stockEffectiveApplied = $pdo->prepare('SELECT 1 FROM accounting_schema_migrations WHERE version = ?');
         $stockEffectiveApplied->execute([ACCOUNTING_STOCK_EFFECTIVE_VERSION]);
@@ -120,6 +128,7 @@ function accounting_create_foundation_tables(PDO $pdo): void {
             id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             direct_sale_id BIGINT UNSIGNED NOT NULL,
             product_id INT UNSIGNED NOT NULL,
+            variant_id INT UNSIGNED NULL,
             product_name_snapshot VARCHAR(120) NOT NULL,
             variant_snapshot VARCHAR(120) NULL,
             quantity SMALLINT UNSIGNED NOT NULL,
@@ -130,7 +139,8 @@ function accounting_create_foundation_tables(PDO $pdo): void {
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             CONSTRAINT fk_direct_sale_items_sale FOREIGN KEY (direct_sale_id) REFERENCES direct_sales(id) ON DELETE RESTRICT,
             CONSTRAINT fk_direct_sale_items_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT,
-            INDEX idx_direct_sale_items_product (product_id)
+            INDEX idx_direct_sale_items_product (product_id),
+            INDEX idx_direct_sale_items_variant (variant_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
         "CREATE TABLE IF NOT EXISTS accounting_operation_groups (
             id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -315,6 +325,17 @@ function accounting_add_variant_stock_support(PDO $pdo): void {
          INNER JOIN product_variants pv ON pv.product_id = sm.product_id AND pv.name = o.variant
          SET sm.variant_id = pv.id
          WHERE sm.variant_id IS NULL AND sm.order_id IS NOT NULL'
+    );
+}
+
+function accounting_add_direct_sale_variant_support(PDO $pdo): void {
+    accounting_add_column_if_missing($pdo, 'direct_sale_items', 'variant_id', 'INT UNSIGNED NULL AFTER product_id');
+    accounting_add_index_if_missing($pdo, 'direct_sale_items', 'idx_direct_sale_items_variant', 'INDEX idx_direct_sale_items_variant (variant_id)');
+    $pdo->exec(
+        'UPDATE direct_sale_items dsi
+         INNER JOIN product_variants pv ON pv.product_id = dsi.product_id AND pv.name = dsi.variant_snapshot
+         SET dsi.variant_id = pv.id
+         WHERE dsi.variant_id IS NULL AND dsi.variant_snapshot IS NOT NULL'
     );
 }
 

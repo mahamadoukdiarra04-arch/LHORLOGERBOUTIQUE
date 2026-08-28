@@ -204,6 +204,7 @@ CREATE TABLE IF NOT EXISTS direct_sale_items (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   direct_sale_id BIGINT UNSIGNED NOT NULL,
   product_id INT UNSIGNED NOT NULL,
+  variant_id INT UNSIGNED NULL,
   product_name_snapshot VARCHAR(120) NOT NULL,
   variant_snapshot VARCHAR(120) NULL,
   quantity SMALLINT UNSIGNED NOT NULL,
@@ -213,6 +214,7 @@ CREATE TABLE IF NOT EXISTS direct_sale_items (
   unit_cost_snapshot_fcfa BIGINT UNSIGNED NOT NULL DEFAULT 0,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_direct_sale_items_product (product_id),
+  INDEX idx_direct_sale_items_variant (variant_id),
   CONSTRAINT fk_direct_sale_items_sale FOREIGN KEY (direct_sale_id) REFERENCES direct_sales(id) ON DELETE RESTRICT,
   CONSTRAINT fk_direct_sale_items_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

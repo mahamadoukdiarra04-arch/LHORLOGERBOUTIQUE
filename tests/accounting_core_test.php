@@ -109,8 +109,16 @@ accounting_test_same(25000, accounting_signed_difference(55000, 30000, 'Écart')
 accounting_test_same(-25000, accounting_signed_difference(30000, 55000, 'Écart'), 'Un écart de rapprochement négatif est calculé en entier.');
 accounting_test_throws(static fn () => accounting_normalize_direct_sale_items([]), 'Une vente directe vide doit être refusée.');
 accounting_test_throws(static fn () => accounting_normalize_direct_sale_items([[
-    'product_id' => '1', 'quantity' => '1', 'unit_price_fcfa' => '1000', 'discount_fcfa' => '1000',
+    'product_id' => '1', 'variant_id' => '7', 'quantity' => '1', 'unit_price_fcfa' => '1000', 'discount_fcfa' => '1000',
 ]]), 'Une remise ne peut pas annuler intégralement une montre.');
+accounting_test_throws(static fn () => accounting_normalize_direct_sale_items([[
+    'product_id' => '1', 'quantity' => '1', 'unit_price_fcfa' => '25000', 'discount_fcfa' => '0',
+]]), 'Une vente directe sans coloris du catalogue doit être refusée.');
+$directSaleItems = accounting_normalize_direct_sale_items([[
+    'product_id' => '1', 'variant_id' => '7', 'quantity' => '2', 'unit_price_fcfa' => '25000', 'discount_fcfa' => '1000',
+]]);
+accounting_test_same(7, $directSaleItems[0]['variant_id'], 'Le coloris de la vente directe est conservé par son identifiant de stock.');
+accounting_test_same(49000, $directSaleItems[0]['line_total_fcfa'], 'Le total de la ligne directe reste exact après sélection du coloris.');
 
 $transfer = ['nature' => 'transfer', 'account_id' => 3, 'destination_account_id' => 4, 'amount_fcfa' => 10000];
 accounting_test_same(-10000, accounting_operation_effect_fcfa($transfer, 3), 'Le compte source d’un transfert est débité.');

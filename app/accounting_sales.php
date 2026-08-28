@@ -123,11 +123,14 @@ function accounting_normalize_direct_sale_items(mixed $input): array {
     foreach (array_values($input) as $item) {
         if (!is_array($item)) throw new RuntimeException('Une ligne de vente directe est invalide.');
         $productRaw = trim((string) ($item['product_id'] ?? ''));
+        $variantRaw = trim((string) ($item['variant_id'] ?? ''));
         $quantityRaw = trim((string) ($item['quantity'] ?? ''));
         $priceRaw = trim((string) ($item['unit_price_fcfa'] ?? ''));
         $discountRaw = trim((string) ($item['discount_fcfa'] ?? '0'));
-        if ($productRaw === '' && $quantityRaw === '' && $priceRaw === '') continue;
-        if ($productRaw === '' || $quantityRaw === '' || $priceRaw === '') throw new RuntimeException('Chaque montre doit avoir un produit, une quantité et un prix.');
+        if ($productRaw === '' && $variantRaw === '' && $quantityRaw === '' && $priceRaw === '') continue;
+        if ($productRaw === '' || $variantRaw === '' || $quantityRaw === '' || $priceRaw === '') {
+            throw new RuntimeException('Chaque montre doit avoir un produit, un coloris, une quantité et un prix.');
+        }
         $quantity = accounting_integer($quantityRaw, 'La quantité vendue', 1);
         if ($quantity > 32767) throw new RuntimeException('La quantité vendue est trop élevée.');
         $price = accounting_integer($priceRaw, 'Le prix unitaire', 1);
@@ -136,8 +139,8 @@ function accounting_normalize_direct_sale_items(mixed $input): array {
         if ($discount >= $subtotal) throw new RuntimeException('La remise doit rester inférieure au sous-total de la ligne.');
         $items[] = [
             'product_id' => accounting_integer($productRaw, 'Le produit', 1), 'quantity' => $quantity,
+            'variant_id' => accounting_integer($variantRaw, 'Le coloris', 1),
             'unit_price_fcfa' => $price, 'discount_fcfa' => $discount, 'line_total_fcfa' => $subtotal - $discount,
-            'variant_snapshot' => accounting_optional_text($item['variant'] ?? null, 'La variante', 120),
         ];
     }
     if ($items === []) throw new RuntimeException('Ajoutez au moins une montre à la vente directe.');
@@ -166,14 +169,31 @@ function accounting_create_direct_sale(PDO $pdo, array $data, ?int $userId = nul
         $items = accounting_normalize_direct_sale_items($data['items'] ?? null);
         $products = accounting_stock_lock_products($pdo, array_column($items, 'product_id'));
         $needed = [];
-        foreach ($items as $item) $needed[$item['product_id']] = ($needed[$item['product_id']] ?? 0) + $item['quantity'];
+        $variantLabels = [];
+        foreach ($items as $index => $item) {
+            $variant = accounting_stock_lock_variant($pdo, $item['product_id'], $item['variant_id']);
+            $items[$index]['variant_snapshot'] = (string) $variant['name'];
+            $key = $item['product_id'] . ':' . $item['variant_id'];
+            $needed[$key] = [
+                'product_id' => $item['product_id'],
+                'variant_id' => $item['variant_id'],
+                'quantity' => ($needed[$key]['quantity'] ?? 0) + $item['quantity'],
+            ];
+            $variantLabels[$key] = (string) $variant['name'];
+        }
         $unitCosts = [];
         if ($deductStock) {
-            foreach ($needed as $productId => $quantity) {
-                if (accounting_stock_available($pdo, $productId) < $quantity) throw new RuntimeException('Le stock est insuffisant pour la vente directe.');
-                $cost = accounting_stock_unit_cost_snapshot($pdo, $productId);
-                if ($cost === null) throw new RuntimeException('Renseignez un réassort avec coût avant de sortir ' . $products[$productId]['name'] . ' du stock.');
-                $unitCosts[$productId] = $cost;
+            foreach ($needed as $key => $requirement) {
+                $productId = (int) $requirement['product_id'];
+                $variantId = (int) $requirement['variant_id'];
+                if (accounting_stock_variant_available($pdo, $productId, $variantId) < (int) $requirement['quantity']) {
+                    throw new RuntimeException('Le stock est insuffisant pour ' . $products[$productId]['name'] . ' · ' . $variantLabels[$key] . '.');
+                }
+                $cost = accounting_stock_unit_cost_snapshot($pdo, $productId, $variantId);
+                if ($cost === null) {
+                    throw new RuntimeException('Renseignez un réassort avec coût pour ' . $products[$productId]['name'] . ' · ' . $variantLabels[$key] . '.');
+                }
+                $unitCosts[$key] = $cost;
             }
         }
         $subtotal = 0;
@@ -206,11 +226,12 @@ function accounting_create_direct_sale(PDO $pdo, array $data, ?int $userId = nul
         if ($link->rowCount() !== 1) throw new RuntimeException('Le groupe comptable ne peut pas être relié à la vente directe.');
         $itemInsert = $pdo->prepare(
             'INSERT INTO direct_sale_items
-             (direct_sale_id, product_id, product_name_snapshot, variant_snapshot, quantity, unit_price_fcfa, discount_fcfa, line_total_fcfa, unit_cost_snapshot_fcfa)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+             (direct_sale_id, product_id, variant_id, product_name_snapshot, variant_snapshot, quantity, unit_price_fcfa, discount_fcfa, line_total_fcfa, unit_cost_snapshot_fcfa)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         );
         foreach ($items as $index => $item) {
-            $itemInsert->execute([$saleId, $item['product_id'], $products[$item['product_id']]['name'], $item['variant_snapshot'], $item['quantity'], $item['unit_price_fcfa'], $item['discount_fcfa'], $item['line_total_fcfa'], $unitCosts[$item['product_id']] ?? 0]);
+            $variantKey = $item['product_id'] . ':' . $item['variant_id'];
+            $itemInsert->execute([$saleId, $item['product_id'], $item['variant_id'], $products[$item['product_id']]['name'], $item['variant_snapshot'], $item['quantity'], $item['unit_price_fcfa'], $item['discount_fcfa'], $item['line_total_fcfa'], $unitCosts[$variantKey] ?? 0]);
             $items[$index]['id'] = (int) $pdo->lastInsertId();
         }
         $category = accounting_delivery_sale_category($pdo);
@@ -232,18 +253,22 @@ function accounting_create_direct_sale(PDO $pdo, array $data, ?int $userId = nul
             }
             accounting_replace_draft_allocations($pdo, (int) $operation['id'], $allocations, $userId);
             if ($deductStock && $paymentIndex === 0) {
-                foreach ($items as $item) accounting_insert_zero_cogs_allocation(
-                    $pdo, (int) $operation['id'], $category, $item['product_id'], null, $item['id'],
-                    $item['quantity'], $unitCosts[$item['product_id']], 1,
-                );
+                foreach ($items as $item) {
+                    $variantKey = $item['product_id'] . ':' . $item['variant_id'];
+                    accounting_insert_zero_cogs_allocation(
+                        $pdo, (int) $operation['id'], $category, $item['product_id'], null, $item['id'],
+                        $item['quantity'], $unitCosts[$variantKey], 1,
+                    );
+                }
             }
             accounting_confirm_operation($pdo, (int) $operation['id'], $userId);
         }
         if ($deductStock) foreach ($items as $item) {
+            $variantKey = $item['product_id'] . ':' . $item['variant_id'];
             accounting_stock_record_movement($pdo, [
-                'product_id' => $item['product_id'], 'movement_type' => 'Sortie', 'quantity' => $item['quantity'],
+                'product_id' => $item['product_id'], 'variant_id' => $item['variant_id'], 'movement_type' => 'Sortie', 'quantity' => $item['quantity'],
                 'direct_sale_item_id' => $item['id'], 'operation_group_id' => $groupResult['group']['id'],
-                'unit_cost_snapshot_fcfa' => $unitCosts[$item['product_id']], 'sale_unit_price_fcfa' => $item['unit_price_fcfa'],
+                'unit_cost_snapshot_fcfa' => $unitCosts[$variantKey], 'sale_unit_price_fcfa' => $item['unit_price_fcfa'],
                 'note' => 'Vente directe ' . $saleRef, 'actor' => admin_identity(),
             ]);
         }
@@ -362,8 +387,16 @@ function accounting_create_refund(PDO $pdo, array $data, ?int $userId = null): a
             ];
         }
         accounting_replace_draft_allocations($pdo, (int) $operation['id'], $allocations, $userId);
-        foreach ($entries as $entry) if ($entry['return_to_stock']) {
+        $returnVariantIds = [];
+        foreach ($entries as $lineId => $entry) if ($entry['return_to_stock']) {
             $line = $entry['line'];
+            $returnVariantId = $sourceKind === 'direct_sale'
+                ? ((int) ($line['variant_id'] ?? 0) ?: accounting_stock_variant_id_for_name($pdo, (int) $line['product_id'], (string) ($line['variant_snapshot'] ?? '')))
+                : accounting_stock_variant_id_for_name($pdo, (int) $line['product_id'], (string) ($line['variant'] ?? ''));
+            if ($returnVariantId === null) {
+                throw new RuntimeException('Le coloris d’origine est introuvable ; le retour physique ne peut pas être confirmé.');
+            }
+            $returnVariantIds[(int) $lineId] = $returnVariantId;
             $unitCost = accounting_integer($line['unit_cost_snapshot_fcfa'], 'Le coût historique', 0);
             accounting_insert_zero_cogs_allocation(
                 $pdo, (int) $operation['id'], $category, (int) $line['product_id'],
@@ -373,10 +406,10 @@ function accounting_create_refund(PDO $pdo, array $data, ?int $userId = null): a
             );
         }
         accounting_confirm_operation($pdo, (int) $operation['id'], $userId);
-        foreach ($entries as $entry) if ($entry['return_to_stock']) {
+        foreach ($entries as $lineId => $entry) if ($entry['return_to_stock']) {
             $line = $entry['line'];
             accounting_stock_record_movement($pdo, [
-                'product_id' => $line['product_id'], 'movement_type' => 'Ajustement', 'quantity' => $entry['quantity'], 'is_sale_return' => '1',
+                'product_id' => $line['product_id'], 'variant_id' => $returnVariantIds[(int) $lineId], 'movement_type' => 'Ajustement', 'quantity' => $entry['quantity'], 'is_sale_return' => '1',
                 $sourceKind === 'order' ? 'order_id' : 'direct_sale_item_id' => $line['source_line_id'],
                 'operation_group_id' => $groupResult['group']['id'], 'unit_cost_snapshot_fcfa' => $line['unit_cost_snapshot_fcfa'],
                 'sale_unit_price_fcfa' => $line['unit_price_fcfa'], 'note' => 'Retour physique · ' . $reference, 'actor' => admin_identity(),

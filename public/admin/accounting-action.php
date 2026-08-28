@@ -32,6 +32,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 try {
     $accounts = accounting_list_accounts($pdo, true);
     $products = $pdo->query('SELECT id, name, price_fcfa FROM products ORDER BY name ASC')->fetchAll();
+    $variantsForUi = [];
+    if ($action === 'direct_sale') {
+        $variants = $pdo->query(
+            'SELECT pv.id, pv.product_id, pv.name,
+                    COALESCE((SELECT SUM(sm.quantity) FROM stock_movements sm WHERE sm.variant_id = pv.id), 0) AS stock_quantity
+             FROM product_variants pv
+             INNER JOIN products p ON p.id = pv.product_id
+             WHERE pv.is_active = 1
+             ORDER BY p.name ASC, pv.name ASC'
+        )->fetchAll();
+        foreach ($variants as $variant) {
+            $variantsForUi[(string) $variant['product_id']][] = [
+                'id' => (int) $variant['id'],
+                'name' => (string) $variant['name'],
+                'stock' => (int) $variant['stock_quantity'],
+            ];
+        }
+    }
     $categories = array_values(array_filter(accounting_list_categories($pdo, true), static fn (array $category): bool => in_array($category['direction'], ['disbursement', 'both'], true)));
     $exceptions = $pdo->query('SELECT order_ref, reason FROM accounting_payment_exceptions WHERE status = "open" ORDER BY opened_at ASC')->fetchAll();
     $refundKind = (string) ($_GET['source_kind'] ?? 'order');
@@ -53,7 +71,48 @@ $now = (new DateTimeImmutable('now', accounting_bamako_timezone()))->format('Y-m
 <header class="admin-page-head accounting-head"><div><p class="admin-kicker">Comptabilité · Nouvelle action</p><h1>Enregistrer ce qui s’est réellement passé.</h1><p>Le total, les comptes et le stock sont contrôlés côté serveur au moment de la confirmation.</p></div><a class="text-link" href="<?= e(url('/admin/accounting.php')) ?>">← Comptabilité</a></header>
 <nav class="accounting-action-tabs" aria-label="Types d’action"><?php foreach (['direct_sale' => 'Vente directe', 'collect_balance' => 'Régulariser', 'owner_contribution' => 'Apport associé', 'disbursement' => 'Décaisser', 'transfer' => 'Transférer', 'refund' => 'Rembourser'] as $key => $label): ?><a class="<?= $action === $key ? 'active' : '' ?>" href="?action=<?= e($key) ?>"><?= e($label) ?></a><?php endforeach; ?></nav>
 <?php if (isset($actionError)): ?><section class="admin-panel"><p class="flash flash-error"><?= e($actionError) ?></p></section><?php elseif ($accounts === []): ?><section class="accounting-empty admin-panel"><p class="admin-kicker">Compte requis</p><h2>Ajoutez d’abord un compte réel.</h2><p class="admin-copy">Sans compte de trésorerie réel, aucune action financière n’est proposée.</p><a class="admin-button" href="<?= e(url('/admin/accounting-settings.php')) ?>">Configurer les comptes</a></section><?php elseif ($action === 'direct_sale'): ?>
-<section class="admin-panel accounting-action-panel"><p class="admin-kicker">Vente hors site</p><h2>Vente directe.</h2><form class="accounting-form" method="post"><?= csrf_field() ?><input type="hidden" name="form_action" value="direct_sale"><input type="hidden" name="idempotency_key" value="<?= e(accounting_new_uuid()) ?>"><label>Date de vente<input type="datetime-local" name="effective_at" value="<?= e($now) ?>" required></label><label>Client (facultatif)<input name="customer_name" maxlength="200"></label><label>Téléphone (facultatif)<input name="customer_phone" maxlength="32" inputmode="tel"></label><label>Canal (facultatif)<input name="channel" maxlength="60" placeholder="Ex. boutique, WhatsApp"></label><label class="wide">Note (facultative)<textarea name="note" maxlength="5000" rows="2"></textarea></label><fieldset class="accounting-line-set wide"><legend>Montres vendues</legend><?php for ($index = 0; $index < 3; $index++): ?><div class="accounting-line"><label>Produit<select name="items[<?= $index ?>][product_id]" <?= $index === 0 ? 'required' : '' ?>><option value="">Choisir</option><?php foreach ($products as $product): ?><option value="<?= (int) $product['id'] ?>"><?= e($product['name']) ?> · <?= money($product['price_fcfa']) ?></option><?php endforeach; ?></select></label><label>Variante<input name="items[<?= $index ?>][variant]" maxlength="120" placeholder="Coloris"></label><label>Qté<input type="number" name="items[<?= $index ?>][quantity]" min="1" <?= $index === 0 ? 'required' : '' ?>></label><label>Prix unitaire FCFA<input type="number" name="items[<?= $index ?>][unit_price_fcfa]" min="1" inputmode="numeric" <?= $index === 0 ? 'required' : '' ?>></label><label>Remise ligne<input type="number" name="items[<?= $index ?>][discount_fcfa]" min="0" value="0" inputmode="numeric"></label></div><?php endfor; ?></fieldset><fieldset class="accounting-line-set wide"><legend>Encaissements — le total doit correspondre exactement à la vente</legend><?php for ($index = 0; $index < 3; $index++): ?><div class="accounting-line payment-line"><label>Compte<select name="payments[<?= $index ?>][account_id]" <?= $index === 0 ? 'required' : '' ?>><option value="">Choisir</option><?php foreach ($accounts as $account): ?><option value="<?= (int) $account['id'] ?>"><?= e($account['name']) ?></option><?php endforeach; ?></select></label><label>Montant FCFA<input type="number" name="payments[<?= $index ?>][amount_fcfa]" min="1" inputmode="numeric" <?= $index === 0 ? 'required' : '' ?>></label><label>Référence (facultative)<input name="payments[<?= $index ?>][payment_reference]" maxlength="120"></label></div><?php endfor; ?></fieldset><input type="hidden" name="deduct_stock" value="0"><label class="accounting-check wide"><input type="checkbox" name="deduct_stock" value="1" checked><span>Déduire les montres du stock</span></label><label class="wide">Motif si le stock ne doit pas diminuer<textarea name="stock_skip_reason" maxlength="500" rows="2" placeholder="Obligatoire seulement si la case est décochée"></textarea></label><button class="admin-button">Confirmer la vente directe</button></form></section>
+<section class="admin-panel accounting-action-panel">
+  <p class="admin-kicker">Vente hors site</p>
+  <h2>Vente directe.</h2>
+  <p class="admin-copy">Le coloris est lié au catalogue et au stock du modèle. La sortie diminuera uniquement la variante sélectionnée.</p>
+  <form class="accounting-form" method="post">
+    <?= csrf_field() ?>
+    <input type="hidden" name="form_action" value="direct_sale">
+    <input type="hidden" name="idempotency_key" value="<?= e(accounting_new_uuid()) ?>">
+    <label>Date de vente<input type="datetime-local" name="effective_at" value="<?= e($now) ?>" required></label>
+    <label>Client (facultatif)<input name="customer_name" maxlength="200"></label>
+    <label>Téléphone (facultatif)<input name="customer_phone" maxlength="32" inputmode="tel"></label>
+    <label>Canal (facultatif)<input name="channel" maxlength="60" placeholder="Ex. boutique, WhatsApp"></label>
+    <label class="wide">Note (facultative)<textarea name="note" maxlength="5000" rows="2"></textarea></label>
+    <fieldset class="accounting-line-set wide">
+      <legend>Montres vendues</legend>
+      <?php for ($index = 0; $index < 3; $index++): ?>
+        <div class="accounting-line" data-direct-sale-line>
+          <label>Produit
+            <select name="items[<?= $index ?>][product_id]" data-direct-sale-product <?= $index === 0 ? 'required' : '' ?>>
+              <option value="">Choisir</option>
+              <?php foreach ($products as $product): ?><option value="<?= (int) $product['id'] ?>"><?= e($product['name']) ?> · <?= money($product['price_fcfa']) ?></option><?php endforeach; ?>
+            </select>
+          </label>
+          <label>Coloris
+            <select name="items[<?= $index ?>][variant_id]" data-direct-sale-variant disabled <?= $index === 0 ? 'required' : '' ?>>
+              <option value="">Choisissez d’abord le produit</option>
+            </select>
+          </label>
+          <label>Qté<input type="number" name="items[<?= $index ?>][quantity]" min="1" <?= $index === 0 ? 'required' : '' ?>></label>
+          <label>Prix unitaire FCFA<input type="number" name="items[<?= $index ?>][unit_price_fcfa]" min="1" inputmode="numeric" <?= $index === 0 ? 'required' : '' ?>></label>
+          <label>Remise ligne<input type="number" name="items[<?= $index ?>][discount_fcfa]" min="0" value="0" inputmode="numeric"></label>
+        </div>
+      <?php endfor; ?>
+    </fieldset>
+    <fieldset class="accounting-line-set wide"><legend>Encaissements — le total doit correspondre exactement à la vente</legend><?php for ($index = 0; $index < 3; $index++): ?><div class="accounting-line payment-line"><label>Compte<select name="payments[<?= $index ?>][account_id]" <?= $index === 0 ? 'required' : '' ?>><option value="">Choisir</option><?php foreach ($accounts as $account): ?><option value="<?= (int) $account['id'] ?>"><?= e($account['name']) ?></option><?php endforeach; ?></select></label><label>Montant FCFA<input type="number" name="payments[<?= $index ?>][amount_fcfa]" min="1" inputmode="numeric" <?= $index === 0 ? 'required' : '' ?>></label><label>Référence (facultative)<input name="payments[<?= $index ?>][payment_reference]" maxlength="120"></label></div><?php endfor; ?></fieldset>
+    <input type="hidden" name="deduct_stock" value="0">
+    <label class="accounting-check wide"><input type="checkbox" name="deduct_stock" value="1" checked><span>Déduire les montres du stock</span></label>
+    <label class="wide">Motif si le stock ne doit pas diminuer<textarea name="stock_skip_reason" maxlength="500" rows="2" placeholder="Obligatoire seulement si la case est décochée"></textarea></label>
+    <button class="admin-button">Confirmer la vente directe</button>
+  </form>
+  <script id="direct-sale-variants" type="application/json"><?= json_encode($variantsForUi, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
+</section>
 <?php elseif ($action === 'collect_balance'): ?>
 <section class="admin-panel accounting-action-panel"><p class="admin-kicker">Commande livrée</p><h2>Encaisser un reliquat.</h2><?php if ($exceptions === []): ?><p class="admin-copy">Aucun reliquat de livraison n’est actuellement ouvert.</p><?php else: ?><form class="accounting-form" method="post"><?= csrf_field() ?><input type="hidden" name="form_action" value="collect_balance"><input type="hidden" name="idempotency_key" value="<?= e(accounting_new_uuid()) ?>"><label>Référence<select name="order_ref" required><?php foreach ($exceptions as $exception): ?><option value="<?= e($exception['order_ref']) ?>"><?= e($exception['order_ref']) ?> · <?= e($exception['reason']) ?></option><?php endforeach; ?></select></label><label>Date d’encaissement<input type="datetime-local" name="effective_at" value="<?= e($now) ?>" required></label><label class="wide">Note (facultative)<textarea name="note" maxlength="5000" rows="2"></textarea></label><fieldset class="accounting-line-set wide"><legend>Encaissements</legend><?php for ($index = 0; $index < 3; $index++): ?><div class="accounting-line payment-line"><label>Compte<select name="payments[<?= $index ?>][account_id]" <?= $index === 0 ? 'required' : '' ?>><option value="">Choisir</option><?php foreach ($accounts as $account): ?><option value="<?= (int) $account['id'] ?>"><?= e($account['name']) ?></option><?php endforeach; ?></select></label><label>Montant FCFA<input type="number" name="payments[<?= $index ?>][amount_fcfa]" min="1" inputmode="numeric" <?= $index === 0 ? 'required' : '' ?>></label><label>Référence<input name="payments[<?= $index ?>][payment_reference]" maxlength="120"></label></div><?php endfor; ?></fieldset><button class="admin-button">Enregistrer cet encaissement</button></form><?php endif; ?></section>
 <?php elseif ($action === 'owner_contribution'): ?>
@@ -65,4 +124,5 @@ $now = (new DateTimeImmutable('now', accounting_bamako_timezone()))->format('Y-m
 <?php else: ?>
 <section class="admin-panel accounting-action-panel"><p class="admin-kicker">Remboursement</p><h2>Choisir la vente à rembourser.</h2><form class="accounting-filter" method="get"><input type="hidden" name="action" value="refund"><label>Source<select name="source_kind"><option value="order" <?= $refundKind === 'order' ? 'selected' : '' ?>>Commande web</option><option value="direct_sale" <?= $refundKind === 'direct_sale' ? 'selected' : '' ?>>Vente directe</option></select></label><label>Référence<input name="source_reference" value="<?= e($refundReference) ?>" maxlength="50" placeholder="HOR-… ou VDR-…" required></label><button class="admin-button">Afficher les lignes</button></form><?php if (isset($refundLines)): ?><form class="accounting-form" method="post"><?= csrf_field() ?><input type="hidden" name="form_action" value="refund"><input type="hidden" name="idempotency_key" value="<?= e(accounting_new_uuid()) ?>"><input type="hidden" name="source_kind" value="<?= e($refundKind) ?>"><input type="hidden" name="source_reference" value="<?= e($refundReference) ?>"><label>Compte de remboursement<select name="account_id" required><?php foreach ($accounts as $account): ?><option value="<?= (int) $account['id'] ?>"><?= e($account['name']) ?></option><?php endforeach; ?></select></label><label>Montant total FCFA<input type="number" name="amount_fcfa" min="1" inputmode="numeric" required></label><label>Date<input type="datetime-local" name="effective_at" value="<?= e($now) ?>" required></label><label>Référence paiement<input name="payment_reference" maxlength="120"></label><label class="wide">Motif<input name="reason" maxlength="1000" required></label><fieldset class="accounting-line-set wide"><legend>Renseignez seulement les lignes à rembourser — le total doit correspondre</legend><?php foreach ($refundLines as $index => $line): ?><div class="accounting-line refund-line"><input type="hidden" name="lines[<?= $index ?>][source_line_id]" value="<?= (int) $line['source_line_id'] ?>"><div><strong><?= e($line['product_name'] ?? $line['product_name_snapshot']) ?></strong><small>Qté vendue <?= (int) $line['quantity'] ?> · <?= money($line['line_total_fcfa']) ?></small></div><label>Montant remboursé<input type="number" name="lines[<?= $index ?>][amount_fcfa]" min="1" inputmode="numeric"></label><label>Qté retournée<input type="number" name="lines[<?= $index ?>][quantity]" min="0" max="<?= (int) $line['quantity'] ?>" value="0"></label><input type="hidden" name="lines[<?= $index ?>][return_to_stock]" value="0"><label class="accounting-check"><input type="checkbox" name="lines[<?= $index ?>][return_to_stock]" value="1"><span>Retour physique en stock</span></label></div><?php endforeach; ?></fieldset><button class="admin-button">Confirmer le remboursement</button></form><?php elseif ($refundReference !== ''): ?><p class="flash flash-error">Aucune ligne remboursable n’a été trouvée pour cette référence.</p><?php endif; ?></section>
 <?php endif; ?>
+<script src="<?= e(url('/assets/js/accounting-action.js')) ?>?v=20260828-variants" defer></script>
 <?php require APP_ROOT . '/templates/admin-footer.php'; ?>

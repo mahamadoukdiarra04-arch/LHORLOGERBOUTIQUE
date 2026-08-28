@@ -44,6 +44,16 @@ function accounting_stock_available(PDO $pdo, int $productId): int {
     return accounting_integer((string) $statement->fetchColumn(), 'Le stock disponible', PHP_INT_MIN);
 }
 
+function accounting_stock_variant_available(PDO $pdo, int $productId, int $variantId): int {
+    $statement = $pdo->prepare(
+        'SELECT COALESCE(SUM(quantity), 0)
+         FROM stock_movements
+         WHERE product_id = ? AND variant_id = ?'
+    );
+    $statement->execute([$productId, $variantId]);
+    return accounting_integer((string) $statement->fetchColumn(), 'Le stock disponible du coloris', PHP_INT_MIN);
+}
+
 function accounting_stock_unit_cost_snapshot(PDO $pdo, int $productId, ?int $variantId = null): ?int {
     $sql =
         'SELECT COALESCE(SUM(purchase_price_fcfa + COALESCE(transit_price_fcfa, 0)), 0) AS total_cost_fcfa,
