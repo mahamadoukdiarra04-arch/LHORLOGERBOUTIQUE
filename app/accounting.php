@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 const ACCOUNTING_FOUNDATION_VERSION = '20260825_accounting_foundation';
 const ACCOUNTING_DELIVERY_VERSION = '20260825_accounting_delivery';
+const ACCOUNTING_VARIANT_STOCK_VERSION = '20260828_variant_stock';
 
 /**
  * The accounting foundation is deliberately initialized from PHP as well as
@@ -40,6 +41,13 @@ function ensure_accounting_schema(): void {
             accounting_add_delivery_integrity($pdo);
             $mark = $pdo->prepare('INSERT INTO accounting_schema_migrations (version) VALUES (?)');
             $mark->execute([ACCOUNTING_DELIVERY_VERSION]);
+        }
+        $variantStockApplied = $pdo->prepare('SELECT 1 FROM accounting_schema_migrations WHERE version = ?');
+        $variantStockApplied->execute([ACCOUNTING_VARIANT_STOCK_VERSION]);
+        if (!$variantStockApplied->fetchColumn()) {
+            accounting_add_variant_stock_support($pdo);
+            $mark = $pdo->prepare('INSERT INTO accounting_schema_migrations (version) VALUES (?)');
+            $mark->execute([ACCOUNTING_VARIANT_STOCK_VERSION]);
         }
         $ready = true;
     } finally {
@@ -266,6 +274,58 @@ function accounting_add_delivery_integrity(PDO $pdo): void {
     accounting_add_column_if_missing($pdo, 'orders', 'stock_processed', 'TINYINT(1) NOT NULL DEFAULT 0');
     accounting_ensure_unique_index($pdo, 'stock_movements', 'idx_stock_order_source', 'UNIQUE INDEX idx_stock_order_source (order_id, movement_type)');
     accounting_ensure_unique_index($pdo, 'stock_movements', 'idx_stock_direct_sale_source', 'UNIQUE INDEX idx_stock_direct_sale_source (direct_sale_item_id, movement_type)');
+}
+
+/**
+ * Variants are stocked underneath their model. Existing product-level movements
+ * remain intentionally unassigned instead of being guessed and misallocated.
+ */
+function accounting_add_variant_stock_support(PDO $pdo): void {
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS product_variants (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            product_id INT UNSIGNED NOT NULL,
+            name VARCHAR(120) NOT NULL,
+            image_path VARCHAR(255) NULL,
+            is_active TINYINT(1) NOT NULL DEFAULT 1,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_product_variant_name (product_id, name),
+            INDEX idx_product_variants_product_active (product_id, is_active),
+            CONSTRAINT fk_product_variants_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    );
+    accounting_add_column_if_missing($pdo, 'stock_movements', 'variant_id', 'INT UNSIGNED NULL AFTER product_id');
+    accounting_add_index_if_missing($pdo, 'stock_movements', 'idx_stock_variant_date', 'INDEX idx_stock_variant_date (variant_id, created_at)');
+    accounting_seed_product_variants($pdo);
+
+    // Delivered web orders already contain the selected color: safely link
+    // their historical stock outputs when the catalogue variant still exists.
+    $pdo->exec(
+        'UPDATE stock_movements sm
+         INNER JOIN orders o ON o.id = sm.order_id
+         INNER JOIN product_variants pv ON pv.product_id = sm.product_id AND pv.name = o.variant
+         SET sm.variant_id = pv.id
+         WHERE sm.variant_id IS NULL AND sm.order_id IS NOT NULL'
+    );
+}
+
+function accounting_seed_product_variants(PDO $pdo): void {
+    require_once APP_ROOT . '/catalog.php';
+    $findProduct = $pdo->prepare('SELECT id FROM products WHERE slug = ? LIMIT 1');
+    $insert = $pdo->prepare(
+        'INSERT INTO product_variants (product_id, name, image_path, is_active)
+         VALUES (?, ?, ?, 1)
+         ON DUPLICATE KEY UPDATE image_path = VALUES(image_path), is_active = 1'
+    );
+    foreach (catalog() as $slug => $product) {
+        $findProduct->execute([(string) $slug]);
+        $productId = (int) $findProduct->fetchColumn();
+        if ($productId < 1) continue;
+        foreach ((array) ($product['variants'] ?? []) as $name => $imagePath) {
+            $insert->execute([$productId, (string) $name, (string) $imagePath]);
+        }
+    }
 }
 
 function accounting_add_column_if_missing(PDO $pdo, string $table, string $column, string $definition): void {

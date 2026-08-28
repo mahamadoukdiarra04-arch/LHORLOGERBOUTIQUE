@@ -83,3 +83,125 @@
     display: none;
   }
 }
+
+/* Stock by model: variants stay grouped below one parent card. */
+.stock-card {
+  display: block;
+  transition: border-color .18s ease, transform .18s ease;
+}
+
+.stock-card:hover {
+  border-color: #8eaccd;
+  transform: translateY(-2px);
+}
+
+.stock-card__eyebrow {
+  margin: 0 0 8px !important;
+  color: #926b2c !important;
+  font-size: 10px !important;
+  font-weight: 800;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.stock-card__action {
+  display: block;
+  margin-top: 17px;
+  color: #07599b;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .04em;
+}
+
+.variant-stock-panel { overflow: hidden; }
+
+.variant-stock-summary {
+  color: #0b5595;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.variant-stock-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 17px;
+}
+
+.variant-stock-card {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #dce6f0;
+  border-radius: 7px;
+  background: #fff;
+}
+
+.variant-stock-card:hover,
+.variant-stock-card.active {
+  border-color: #0a5c9e;
+  background: #f3f8fd;
+}
+
+.variant-stock-card.low {
+  border-color: #e8c781;
+  background: #fffaf0;
+}
+
+.variant-stock-card img {
+  width: 62px;
+  height: 58px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: #eef3f8;
+}
+
+.variant-stock-card span { min-width: 0; }
+
+.variant-stock-card strong,
+.variant-stock-card small,
+.variant-stock-card b {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.variant-stock-card strong {
+  color: var(--navy);
+  font-size: 12px;
+}
+
+.variant-stock-card small {
+  margin-top: 4px;
+  color: #60718a;
+  font-size: 11px;
+}
+
+.variant-stock-card b {
+  margin-top: 6px;
+  color: #0b5595;
+  font-size: 11px;
+}
+
+.variant-stock-note {
+  margin: 15px 0 0;
+  padding: 10px 12px;
+  border-left: 3px solid #d3a14a;
+  background: #fffaf0;
+}
+
+@media (max-width: 850px) {
+  .variant-stock-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 560px) {
+  .variant-stock-panel { padding: 16px; }
+  .variant-stock-grid { grid-template-columns: 1fr; }
+  .variant-stock-card { grid-template-columns: 70px minmax(0, 1fr); }
+  .variant-stock-card img { width: 70px; height: 64px; }
+}

@@ -19,20 +19,44 @@ function accounting_stock_lock_products(PDO $pdo, array $productIds): array {
     return $products;
 }
 
+function accounting_stock_lock_variant(PDO $pdo, int $productId, int $variantId): array {
+    $statement = $pdo->prepare(
+        'SELECT id, product_id, name FROM product_variants WHERE id = ? AND product_id = ? AND is_active = 1 FOR UPDATE'
+    );
+    $statement->execute([$variantId, $productId]);
+    $variant = $statement->fetch();
+    if (!$variant) throw new RuntimeException('Le coloris sélectionné ne correspond pas à ce modèle.');
+    return $variant;
+}
+
+function accounting_stock_variant_id_for_name(PDO $pdo, int $productId, string $variantName): ?int {
+    $statement = $pdo->prepare(
+        'SELECT id FROM product_variants WHERE product_id = ? AND name = ? AND is_active = 1 LIMIT 1'
+    );
+    $statement->execute([$productId, $variantName]);
+    $variantId = $statement->fetchColumn();
+    return $variantId === false ? null : (int) $variantId;
+}
+
 function accounting_stock_available(PDO $pdo, int $productId): int {
     $statement = $pdo->prepare('SELECT COALESCE(SUM(quantity), 0) FROM stock_movements WHERE product_id = ?');
     $statement->execute([$productId]);
     return accounting_integer((string) $statement->fetchColumn(), 'Le stock disponible', PHP_INT_MIN);
 }
 
-function accounting_stock_unit_cost_snapshot(PDO $pdo, int $productId): ?int {
-    $statement = $pdo->prepare(
+function accounting_stock_unit_cost_snapshot(PDO $pdo, int $productId, ?int $variantId = null): ?int {
+    $sql =
         'SELECT COALESCE(SUM(purchase_price_fcfa + COALESCE(transit_price_fcfa, 0)), 0) AS total_cost_fcfa,
                 COALESCE(SUM(quantity), 0) AS total_quantity
          FROM stock_movements
-         WHERE product_id = ? AND movement_type = "Réassort" AND purchase_price_fcfa IS NOT NULL'
-    );
-    $statement->execute([$productId]);
+         WHERE product_id = ? AND movement_type = "Réassort" AND purchase_price_fcfa IS NOT NULL';
+    $params = [$productId];
+    if ($variantId !== null) {
+        $sql .= ' AND variant_id = ?';
+        $params[] = $variantId;
+    }
+    $statement = $pdo->prepare($sql);
+    $statement->execute($params);
     $row = $statement->fetch() ?: ['total_cost_fcfa' => '0', 'total_quantity' => '0'];
     $quantity = accounting_integer((string) $row['total_quantity'], 'La quantité réassortie', 0);
     if ($quantity < 1) return null;
@@ -48,6 +72,10 @@ function accounting_stock_record_movement(PDO $pdo, array $data): array {
     $quantity = accounting_integer($data['quantity'] ?? null, 'La quantité', 1);
     if ($quantity > 2147483647) throw new RuntimeException('La quantité est trop élevée.');
     $products = accounting_stock_lock_products($pdo, [$productId]);
+    $variantId = array_key_exists('variant_id', $data) && $data['variant_id'] !== null && $data['variant_id'] !== ''
+        ? accounting_integer($data['variant_id'], 'Le coloris', 1)
+        : null;
+    $variant = $variantId !== null ? accounting_stock_lock_variant($pdo, $productId, $variantId) : null;
 
     $orderId = array_key_exists('order_id', $data) && $data['order_id'] !== null
         ? accounting_integer($data['order_id'], 'La ligne de commande', 1)
@@ -102,7 +130,7 @@ function accounting_stock_record_movement(PDO $pdo, array $data): array {
         }
         $unitCostSnapshot = array_key_exists('unit_cost_snapshot_fcfa', $data) && $data['unit_cost_snapshot_fcfa'] !== null
             ? accounting_integer($data['unit_cost_snapshot_fcfa'], 'Le coût unitaire historique', 0)
-            : accounting_stock_unit_cost_snapshot($pdo, $productId);
+            : (accounting_stock_unit_cost_snapshot($pdo, $productId, $variantId) ?? accounting_stock_unit_cost_snapshot($pdo, $productId));
         if ($unitCostSnapshot === null) {
             throw new RuntimeException('Renseignez un réassort avec coût avant de sortir ' . $products[$productId]['name'] . ' du stock.');
         }
@@ -138,17 +166,19 @@ function accounting_stock_record_movement(PDO $pdo, array $data): array {
     $actor = accounting_optional_text($data['actor'] ?? admin_identity(), 'L’auteur', 20);
     $insert = $pdo->prepare(
         'INSERT INTO stock_movements
-         (product_id, order_id, direct_sale_item_id, operation_group_id, movement_type, quantity, purchase_price_fcfa, transit_price_fcfa, unit_cost_fcfa, unit_cost_snapshot_fcfa, sale_unit_price_fcfa, note, skip_reason, actor)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+         (product_id, variant_id, order_id, direct_sale_item_id, operation_group_id, movement_type, quantity, purchase_price_fcfa, transit_price_fcfa, unit_cost_fcfa, unit_cost_snapshot_fcfa, sale_unit_price_fcfa, note, skip_reason, actor)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     );
     $insert->execute([
-        $productId, $orderId, $directSaleItemId, $groupId, $movementType, $storedQuantity, $purchase, $transit,
+        $productId, $variantId, $orderId, $directSaleItemId, $groupId, $movementType, $storedQuantity, $purchase, $transit,
         $unitCost, $unitCostSnapshot, $saleUnitPrice, $note, $skipReason, $actor,
     ]);
     return [
         'id' => (int) $pdo->lastInsertId(),
         'product_id' => $productId,
         'product_name' => $products[$productId]['name'],
+        'variant_id' => $variantId,
+        'variant_name' => $variant['name'] ?? null,
         'movement_type' => $movementType,
         'quantity' => $storedQuantity,
         'unit_cost_snapshot_fcfa' => $unitCostSnapshot,

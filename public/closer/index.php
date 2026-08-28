@@ -1,7 +1,7 @@
 <?php
 require __DIR__ . '/../../app/bootstrap.php';
 require_closer();
-require APP_ROOT . '/catalog.php';
+require_once APP_ROOT . '/catalog.php';
 try {
     ensure_closer_schema();
     $pdo = db();

@@ -1,6 +1,6 @@
 <?php
 require __DIR__ . '/../app/bootstrap.php';
-require APP_ROOT . '/catalog.php';
+require_once APP_ROOT . '/catalog.php';
 
 function checkout_lines(): array {
     $raw = (string) ($_POST['cart'] ?? '');

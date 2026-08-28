@@ -1,6 +1,6 @@
 <?php
 require __DIR__ . '/../app/bootstrap.php';
-require APP_ROOT . '/catalog.php';
+require_once APP_ROOT . '/catalog.php';
 $slug = (string) ($_GET['watch'] ?? '');
 $product = product_by_slug($slug);
 if (!$product) { http_response_code(404); exit('Montre introuvable.'); }

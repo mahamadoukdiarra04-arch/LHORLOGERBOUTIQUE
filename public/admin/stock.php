@@ -14,6 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $action = (string) ($_POST['action'] ?? '');
     $productId = (int) ($_POST['product_id'] ?? 0);
+    $selectedVariantId = (int) ($_POST['variant_id'] ?? 0);
     $productStatement = $pdo->prepare('SELECT name FROM products WHERE id = ?');
     $productStatement->execute([$productId]);
     $productName = $productStatement->fetchColumn();
@@ -27,6 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->beginTransaction();
                 $movement = accounting_stock_record_movement($pdo, [
                     'product_id' => $productId,
+                    'variant_id' => $selectedVariantId,
                     'movement_type' => $type,
                     'quantity' => $_POST['quantity'] ?? null,
                     'purchase_price_fcfa' => $_POST['purchase_price'] ?? null,
@@ -34,7 +36,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'note' => $_POST['note'] ?? null,
                     'actor' => admin_identity(),
                 ]);
-                log_event('stock', $type . ' · ' . $productName . ' · ' . abs((int) $movement['quantity']) . ' unité(s)', $productId);
+                $variantLabel = $movement['variant_name'] ? ' · ' . $movement['variant_name'] : '';
+                log_event('stock', $type . ' · ' . $productName . $variantLabel . ' · ' . abs((int) $movement['quantity']) . ' unité(s)', $productId);
                 $pdo->commit();
             } catch (Throwable $exception) {
                 if ($pdo->inTransaction()) $pdo->rollBack();
@@ -78,7 +81,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash('error', accounting_safe_error_message($exception, 'Le mouvement de stock n’a pas pu être enregistré. Réessayez dans quelques instants.'));
     }
 
-    redirect('/admin/stock.php?product=' . $productId);
+    redirect('/admin/stock.php?' . http_build_query(array_filter([
+        'product' => $productId ?: null,
+        'variant' => $selectedVariantId ?: null,
+    ])));
 }
 
 $stockQuery = "
@@ -88,6 +94,8 @@ $stockQuery = "
         p.slug,
         p.price_fcfa,
         COALESCE(SUM(sm.quantity), 0) AS quantity,
+        COALESCE(SUM(CASE WHEN sm.variant_id IS NOT NULL THEN sm.quantity ELSE 0 END), 0) AS classified_quantity,
+        COALESCE(SUM(CASE WHEN sm.variant_id IS NULL THEN sm.quantity ELSE 0 END), 0) AS unclassified_quantity,
         (
             SELECT
                 SUM(s2.purchase_price_fcfa + COALESCE(s2.transit_price_fcfa, 0))
@@ -104,12 +112,36 @@ $stockQuery = "
 ";
 $stock = $pdo->query($stockQuery)->fetchAll();
 $selected = (int) ($_GET['product'] ?? ($stock[0]['id'] ?? 0));
+$selectedVariant = (int) ($_GET['variant'] ?? 0);
 [$periodKey, $periodLabel, $start, $end] = allowed_period();
 
+$variantsStatement = $pdo->query(
+    "SELECT
+        pv.id, pv.product_id, pv.name, pv.image_path,
+        COALESCE(SUM(sm.quantity), 0) AS quantity,
+        (
+            SELECT SUM(s2.purchase_price_fcfa + COALESCE(s2.transit_price_fcfa, 0)) / NULLIF(SUM(s2.quantity), 0)
+            FROM stock_movements s2
+            WHERE s2.variant_id = pv.id
+              AND s2.movement_type = 'Réassort'
+              AND s2.purchase_price_fcfa IS NOT NULL
+        ) AS unit_cost
+     FROM product_variants pv
+     LEFT JOIN stock_movements sm ON sm.variant_id = pv.id
+     WHERE pv.is_active = 1
+     GROUP BY pv.id
+     ORDER BY pv.product_id ASC, pv.name ASC"
+);
+$variantsByProduct = [];
+foreach ($variantsStatement->fetchAll() as $variant) {
+    $variantsByProduct[(int) $variant['product_id']][] = $variant;
+}
+
 $eventsStatement = $pdo->prepare(
-    'SELECT sm.*, p.name
+    'SELECT sm.*, p.name, pv.name AS variant_name
      FROM stock_movements sm
      JOIN products p ON p.id = sm.product_id
+     LEFT JOIN product_variants pv ON pv.id = sm.variant_id
      WHERE sm.product_id = ?
      ORDER BY sm.created_at DESC
      LIMIT 100'
@@ -123,6 +155,8 @@ $ads = $adsStatement->fetchAll();
 
 $selectedItem = current(array_filter($stock, fn(array $item): bool => (int) $item['id'] === $selected))
     ?: ($stock[0] ?? null);
+$selectedVariants = $selectedItem ? ($variantsByProduct[(int) $selectedItem['id']] ?? []) : [];
+$selectedVariantItem = current(array_filter($selectedVariants, fn(array $variant): bool => (int) $variant['id'] === $selectedVariant)) ?: null;
 
 try {
     $accountsReady = accounting_has_active_accounts($pdo);
@@ -158,18 +192,35 @@ require APP_ROOT . '/templates/admin-header.php';
     <?php $low = (int) $item['quantity'] <= 6; ?>
     <?php $unitCost = $item['unit_cost'] !== null ? (float) $item['unit_cost'] : null; ?>
     <a class="stock-card <?= $low ? 'low' : '' ?>" href="?<?= e(http_build_query(['product' => (int) $item['id'], 'period' => $periodKey, 'start' => $start, 'end' => $end])) ?>">
-      <p><?= e($item['name']) ?></p>
+      <p class="stock-card__eyebrow">Modèle · <?= count($variantsByProduct[(int) $item['id']] ?? []) ?> coloris</p>
+      <h2><?= e($item['name']) ?></h2>
       <div class="quantity"><?= (int) $item['quantity'] ?></div>
       <p>unités disponibles · seuil : 6</p>
       <p>Prix de vente · <?= e(money((int) $item['price_fcfa'])) ?></p>
       <strong><?= $unitCost !== null ? e(money($unitCost) . ' / unité') : 'Coût à renseigner' ?></strong>
-      <p><?= $low ? 'À réassortir' : 'Stock suivi' ?></p>
+      <span class="stock-card__action"><?= $low ? 'À réassortir' : 'Voir les coloris' ?> →</span>
     </a>
   <?php endforeach; ?>
 </section>
 
 <?php if ($selectedItem): ?>
   <?php $selectedUnitCost = $selectedItem['unit_cost'] !== null ? (float) $selectedItem['unit_cost'] : null; ?>
+  <section class="admin-panel variant-stock-panel" style="margin-top:15px">
+    <div class="admin-panel__head"><div><p class="admin-kicker">Variantes · <?= e($selectedItem['name']) ?></p><h2>Un modèle, tous ses coloris.</h2></div><span class="variant-stock-summary"><?= (int) $selectedItem['quantity'] ?> unité(s) au total</span></div>
+    <p class="admin-copy">Choisissez un coloris pour préparer le réassort. Chaque variante conserve son propre stock et son coût unitaire.</p>
+    <div class="variant-stock-grid">
+      <?php foreach ($selectedVariants as $variant): ?>
+        <?php $variantLow = (int) $variant['quantity'] <= 2; ?>
+        <a class="variant-stock-card <?= $selectedVariantItem && (int) $selectedVariantItem['id'] === (int) $variant['id'] ? 'active' : '' ?> <?= $variantLow ? 'low' : '' ?>" href="?<?= e(http_build_query(['product' => (int) $selectedItem['id'], 'variant' => (int) $variant['id'], 'period' => $periodKey, 'start' => $start, 'end' => $end])) ?>">
+          <?php if ($variant['image_path']): ?><img src="<?= e(url('/' . $variant['image_path'])) ?>" alt="<?= e($variant['name']) ?>"><?php endif; ?>
+          <span><strong><?= e($variant['name']) ?></strong><small><?= (int) $variant['quantity'] ?> unité(s) · <?= $variantLow ? 'à surveiller' : 'suivi' ?></small><b><?= $variant['unit_cost'] !== null ? e(money((float) $variant['unit_cost'])) : 'Coût à renseigner' ?></b></span>
+        </a>
+      <?php endforeach; ?>
+    </div>
+    <?php if ((int) $selectedItem['unclassified_quantity'] !== 0): ?>
+      <p class="admin-copy variant-stock-note"><?= (int) $selectedItem['unclassified_quantity'] ?> unité(s) historique(s) restent au niveau du modèle : elles ne sont volontairement attribuées à aucun coloris sans information fiable.</p>
+    <?php endif; ?>
+  </section>
   <section class="admin-panel finance-context" style="margin-top:15px">
     <div class="admin-panel__head"><div><p class="admin-kicker">Rentabilité réalisée · <?= e($selectedItem['name']) ?></p><h2>Lecture comptable de la période.</h2></div><a href="<?= e(url('/admin/accounting-ted.php?' . http_build_query(['period' => $periodKey, 'start' => $start, 'end' => $end]))) ?>">Voir le TED →</a></div>
     <form class="admin-period accounting-period" method="get"><input type="hidden" name="product" value="<?= (int) $selectedItem['id'] ?>"><?php foreach (['today' => 'Aujourd’hui', '7' => '7 jours', '30' => '30 jours', '90' => '90 jours', 'month' => 'Ce mois', 'year' => 'Cette année'] as $key => $label): ?><a class="<?= $periodKey === $key ? 'active' : '' ?>" href="?<?= e(http_build_query(['product' => (int) $selectedItem['id'], 'period' => $key])) ?>"><?= e($label) ?></a><?php endforeach; ?><input type="hidden" name="period" value="custom"><span class="custom-period"><input type="date" name="start" value="<?= e($start) ?>"><input type="date" name="end" value="<?= e($end) ?>"><button class="admin-button">Choisir</button></span></form>
@@ -186,12 +237,18 @@ require APP_ROOT . '/templates/admin-header.php';
   </section>
   <section class="admin-grid" style="margin-top:15px">
     <article class="admin-panel">
-      <p class="admin-kicker">Mouvement · <?= e($selectedItem['name']) ?></p>
+      <p class="admin-kicker">Mouvement · <?= e($selectedItem['name']) ?><?= $selectedVariantItem ? ' · ' . e($selectedVariantItem['name']) : '' ?></p>
       <h2>Mettre le stock à jour.</h2>
       <form class="data-form" method="post">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="movement">
         <input type="hidden" name="product_id" value="<?= (int) $selectedItem['id'] ?>">
+        <label>Coloris
+          <select name="variant_id" required>
+            <option value="">Choisir un coloris</option>
+            <?php foreach ($selectedVariants as $variant): ?><option value="<?= (int) $variant['id'] ?>" <?= $selectedVariantItem && (int) $selectedVariantItem['id'] === (int) $variant['id'] ? 'selected' : '' ?>><?= e($variant['name']) ?> · <?= (int) $variant['quantity'] ?> unité(s)</option><?php endforeach; ?>
+          </select>
+        </label>
         <label>Mouvement
           <select name="movement_type">
             <option>Réassort</option>
@@ -206,8 +263,8 @@ require APP_ROOT . '/templates/admin-header.php';
         <button class="admin-button">Enregistrer</button>
       </form>
       <p style="color:#60718a;font-size:12px">
-        Coût unitaire moyen actuel :
-        <strong><?= $selectedUnitCost !== null ? e(money($selectedUnitCost)) : 'À renseigner' ?></strong>.
+        <?= $selectedVariantItem ? 'Coût unitaire de ce coloris' : 'Coût unitaire moyen du modèle' ?> :
+        <strong><?= $selectedVariantItem && $selectedVariantItem['unit_cost'] !== null ? e(money((float) $selectedVariantItem['unit_cost'])) : ($selectedVariantItem ? 'À renseigner' : ($selectedUnitCost !== null ? e(money($selectedUnitCost)) : 'À renseigner')) ?></strong>.
       </p>
     </article>
 
@@ -218,6 +275,7 @@ require APP_ROOT . '/templates/admin-header.php';
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="ads">
         <input type="hidden" name="product_id" value="<?= (int) $selectedItem['id'] ?>">
+        <input type="hidden" name="variant_id" value="<?= $selectedVariantItem ? (int) $selectedVariantItem['id'] : '' ?>">
         <label>Du<input type="date" name="start_date" required></label>
         <label>Au<input type="date" name="end_date" required></label>
         <label>Montant FCFA<input type="number" name="amount" min="1" required></label>
@@ -234,6 +292,7 @@ require APP_ROOT . '/templates/admin-header.php';
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="sale_price">
       <input type="hidden" name="product_id" value="<?= (int) $selectedItem['id'] ?>">
+      <input type="hidden" name="variant_id" value="<?= $selectedVariantItem ? (int) $selectedVariantItem['id'] : '' ?>">
       <label>Prix de vente (FCFA)
         <input type="number" name="sale_price" min="1" value="<?= (int) $selectedItem['price_fcfa'] ?>" required>
       </label>
@@ -252,7 +311,7 @@ require APP_ROOT . '/templates/admin-header.php';
         <div class="event">
           <span>
             <strong><?= e($event['movement_type']) ?></strong>
-            <small><?= e(date('d/m/Y H:i', strtotime($event['created_at']))) ?></small>
+            <small><?= e(date('d/m/Y H:i', strtotime($event['created_at']))) ?><?= $event['variant_name'] ? ' · ' . e($event['variant_name']) : ' · Modèle non ventilé' ?></small>
           </span>
           <strong><?= $event['quantity'] > 0 ? '+' : '' ?><?= (int) $event['quantity'] ?> unité(s)</strong>
           <span>

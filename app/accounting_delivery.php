@@ -113,7 +113,7 @@ function accounting_delivery_sale_category(PDO $pdo): array {
     return $category;
 }
 
-function accounting_add_delivery_cogs_allocations(PDO $pdo, int $operationId, array $lines, array $unitCosts, int $categoryId): void {
+function accounting_add_delivery_cogs_allocations(PDO $pdo, int $operationId, array $lines, array $unitCostsByOrder, int $categoryId): void {
     $insert = $pdo->prepare(
         'INSERT INTO accounting_allocations
          (operation_id, category_id, treatment, scope, product_id, order_id, amount_fcfa, effect_sign, quantity_equivalent, unit_cost_snapshot_fcfa, cogs_amount_fcfa)
@@ -122,7 +122,7 @@ function accounting_add_delivery_cogs_allocations(PDO $pdo, int $operationId, ar
     foreach ($lines as $line) {
         $productId = accounting_integer($line['product_id'], 'Le produit de commande', 1);
         $quantity = accounting_integer($line['quantity'], 'La quantité commandée', 1);
-        $unitCost = $unitCosts[$productId] ?? null;
+        $unitCost = $unitCostsByOrder[(int) $line['id']] ?? null;
         if ($unitCost === null) throw new RuntimeException('Le coût historique du produit est introuvable.');
         $insert->execute([
             $operationId,
@@ -186,14 +186,22 @@ function accounting_confirm_delivery(PDO $pdo, int $orderId, array $data, ?int $
             $productId = (int) $line['product_id'];
             $neededByProduct[$productId] = ($neededByProduct[$productId] ?? 0) + (int) $line['quantity'];
         }
-        $unitCosts = [];
+        $unitCostsByOrder = [];
+        $variantIdsByOrder = [];
         foreach ($neededByProduct as $productId => $needed) {
             if (accounting_stock_available($pdo, $productId) < $needed) {
                 throw new RuntimeException('Le stock est insuffisant pour livrer toute la référence ' . $orderRef . '.');
             }
-            $unitCost = accounting_stock_unit_cost_snapshot($pdo, $productId);
+        }
+        foreach ($lines as $line) {
+            $lineId = (int) $line['id'];
+            $productId = (int) $line['product_id'];
+            $variantId = accounting_stock_variant_id_for_name($pdo, $productId, (string) $line['variant']);
+            $unitCost = $variantId !== null ? accounting_stock_unit_cost_snapshot($pdo, $productId, $variantId) : null;
+            $unitCost ??= accounting_stock_unit_cost_snapshot($pdo, $productId);
             if ($unitCost === null) throw new RuntimeException('Renseignez un réassort avec coût avant de livrer cette commande.');
-            $unitCosts[$productId] = $unitCost;
+            $variantIdsByOrder[$lineId] = $variantId;
+            $unitCostsByOrder[$lineId] = $unitCost;
         }
 
         $category = accounting_delivery_sale_category($pdo);
@@ -225,7 +233,7 @@ function accounting_confirm_delivery(PDO $pdo, int $orderId, array $data, ?int $
                 ];
             }
             accounting_replace_draft_allocations($pdo, (int) $operation['id'], $allocations, $userId);
-            if ($paymentIndex === 0) accounting_add_delivery_cogs_allocations($pdo, (int) $operation['id'], $lines, $unitCosts, (int) $category['id']);
+            if ($paymentIndex === 0) accounting_add_delivery_cogs_allocations($pdo, (int) $operation['id'], $lines, $unitCostsByOrder, (int) $category['id']);
             accounting_confirm_operation($pdo, (int) $operation['id'], $userId);
         }
 
@@ -237,7 +245,8 @@ function accounting_confirm_delivery(PDO $pdo, int $orderId, array $data, ?int $
                 'quantity' => $line['quantity'],
                 'order_id' => $line['id'],
                 'operation_group_id' => $groupResult['group']['id'],
-                'unit_cost_snapshot_fcfa' => $unitCosts[$productId],
+                'variant_id' => $variantIdsByOrder[(int) $line['id']] ?? null,
+                'unit_cost_snapshot_fcfa' => $unitCostsByOrder[(int) $line['id']],
                 'sale_unit_price_fcfa' => $line['unit_price_fcfa'],
                 'note' => 'Livraison ' . $orderRef,
                 'actor' => admin_identity(),

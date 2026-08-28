@@ -1,6 +1,6 @@
 <?php
 require __DIR__ . '/../app/bootstrap.php';
-require APP_ROOT . '/catalog.php';
+require_once APP_ROOT . '/catalog.php';
 $products = catalog();
 $pageTitle = 'L’Horloger · Montres sélectionnées à Bamako';
 require APP_ROOT . '/templates/store-header.php';

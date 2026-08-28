@@ -7,6 +7,19 @@ CREATE TABLE IF NOT EXISTS products (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS product_variants (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  product_id INT UNSIGNED NOT NULL,
+  name VARCHAR(120) NOT NULL,
+  image_path VARCHAR(255) NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_product_variant_name (product_id, name),
+  INDEX idx_product_variants_product_active (product_id, is_active),
+  CONSTRAINT fk_product_variants_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS orders (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   order_ref VARCHAR(32) NOT NULL,
@@ -15,6 +28,7 @@ CREATE TABLE IF NOT EXISTS orders (
   phone VARCHAR(32) NOT NULL,
   district VARCHAR(150) NOT NULL,
   product_id INT UNSIGNED NOT NULL,
+  variant_id INT UNSIGNED NULL,
   product_name VARCHAR(120) NOT NULL,
   variant VARCHAR(120) NOT NULL,
   quantity SMALLINT UNSIGNED NOT NULL,
@@ -46,7 +60,7 @@ CREATE TABLE IF NOT EXISTS stock_movements (
   skip_reason VARCHAR(500) NULL,
   actor VARCHAR(20) NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_stock_product_date (product_id, created_at), UNIQUE INDEX idx_stock_order_source (order_id, movement_type), UNIQUE INDEX idx_stock_direct_sale_source (direct_sale_item_id, movement_type),
+  INDEX idx_stock_product_date (product_id, created_at), INDEX idx_stock_variant_date (variant_id, created_at), UNIQUE INDEX idx_stock_order_source (order_id, movement_type), UNIQUE INDEX idx_stock_direct_sale_source (direct_sale_item_id, movement_type),
   CONSTRAINT fk_stock_product FOREIGN KEY (product_id) REFERENCES products(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
