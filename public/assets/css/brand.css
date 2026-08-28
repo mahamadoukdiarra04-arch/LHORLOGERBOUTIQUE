@@ -131,8 +131,7 @@
 
 .variant-stock-card {
   display: grid;
-  grid-template-columns: 62px minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   min-width: 0;
   padding: 8px;
@@ -150,14 +149,6 @@
 .variant-stock-card.low {
   border-color: #e8c781;
   background: #fffaf0;
-}
-
-.variant-stock-card img {
-  width: 62px;
-  height: 58px;
-  object-fit: cover;
-  border-radius: 4px;
-  background: #eef3f8;
 }
 
 .variant-stock-card span { min-width: 0; }
@@ -202,6 +193,4 @@
 @media (max-width: 560px) {
   .variant-stock-panel { padding: 16px; }
   .variant-stock-grid { grid-template-columns: 1fr; }
-  .variant-stock-card { grid-template-columns: 70px minmax(0, 1fr); }
-  .variant-stock-card img { width: 70px; height: 64px; }
 }

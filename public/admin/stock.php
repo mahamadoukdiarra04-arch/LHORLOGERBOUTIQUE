@@ -117,7 +117,7 @@ $selectedVariant = (int) ($_GET['variant'] ?? 0);
 
 $variantsStatement = $pdo->query(
     "SELECT
-        pv.id, pv.product_id, pv.name, pv.image_path,
+        pv.id, pv.product_id, pv.name,
         COALESCE(SUM(sm.quantity), 0) AS quantity,
         (
             SELECT SUM(s2.purchase_price_fcfa + COALESCE(s2.transit_price_fcfa, 0)) / NULLIF(SUM(s2.quantity), 0)
@@ -212,7 +212,6 @@ require APP_ROOT . '/templates/admin-header.php';
       <?php foreach ($selectedVariants as $variant): ?>
         <?php $variantLow = (int) $variant['quantity'] <= 2; ?>
         <a class="variant-stock-card <?= $selectedVariantItem && (int) $selectedVariantItem['id'] === (int) $variant['id'] ? 'active' : '' ?> <?= $variantLow ? 'low' : '' ?>" href="?<?= e(http_build_query(['product' => (int) $selectedItem['id'], 'variant' => (int) $variant['id'], 'period' => $periodKey, 'start' => $start, 'end' => $end])) ?>">
-          <?php if ($variant['image_path']): ?><img src="<?= e(url('/' . $variant['image_path'])) ?>" alt="<?= e($variant['name']) ?>"><?php endif; ?>
           <span><strong><?= e($variant['name']) ?></strong><small><?= (int) $variant['quantity'] ?> unité(s) · <?= $variantLow ? 'à surveiller' : 'suivi' ?></small><b><?= $variant['unit_cost'] !== null ? e(money((float) $variant['unit_cost'])) : 'Coût à renseigner' ?></b></span>
         </a>
       <?php endforeach; ?>
