@@ -57,6 +57,12 @@
   gap: 12px;
 }
 
+.accounting-form .direct-sale-builder,
+.accounting-form .direct-sale-summary,
+.accounting-form .direct-sale-payment-status {
+  grid-column: 1 / -1;
+}
+
 .direct-sale-builder__help {
   margin: 0;
   color: #60718a;
