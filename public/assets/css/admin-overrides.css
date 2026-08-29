@@ -196,6 +196,17 @@
     max-width: 100%;
   }
 
+  .admin-filter > a,
+  .mobile-card-row a[href^="tel:"] {
+    display: inline-flex;
+    align-items: center;
+    min-height: 46px;
+  }
+
+  .admin-filter > a {
+    justify-content: center;
+  }
+
   .admin-period {
     width: 100%;
     gap: 8px;
