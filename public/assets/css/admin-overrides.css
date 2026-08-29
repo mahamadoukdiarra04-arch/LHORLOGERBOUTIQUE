@@ -399,6 +399,7 @@
     display: block;
     min-width: 0;
     overflow: hidden;
+    scroll-margin-top: 64px;
     border: 1px solid #cddceb;
     border-radius: 10px;
     background: #f7faff;
