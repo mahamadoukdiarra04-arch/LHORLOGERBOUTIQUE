@@ -127,23 +127,43 @@ require APP_ROOT . '/templates/admin-header.php';
 
 <section class="admin-panel"><div class="admin-table-wrap mobile-card-table-wrap"><table class="admin-table mobile-card-table orders-table"><thead><tr><th>Commande</th><th>Client</th><th>Produit</th><th>Canal</th><th>État</th><th>Montant</th><th></th></tr></thead><tbody>
 <?php foreach ($orders as $order): ?>
-  <tr class="mobile-card-row">
+  <?php $isExpanded = $selected === (int) $order['id']; ?>
+  <tr id="order-card-<?= (int) $order['id'] ?>" class="mobile-card-row <?= $isExpanded ? 'is-expanded' : '' ?>">
     <td data-label="Commande"><strong><?= e($order['order_ref']) ?></strong><small><?= e(date('d/m/Y H:i', strtotime($order['created_at']))) ?></small></td>
     <td data-label="Client"><strong><?= e($order['customer_first_name'] . ' ' . $order['customer_last_name']) ?></strong><small><?= e($order['phone']) ?> · <?= e($order['district']) ?></small></td>
     <td data-label="Produit"><strong><?= e($order['product_name']) ?></strong><small><?= e($order['variant']) ?> · Qté <?= (int) $order['quantity'] ?></small></td>
     <td data-label="Canal"><?= e($order['acquisition_channel'] ?? 'À renseigner') ?></td>
     <td data-label="État"><span class="status <?= $order['status'] === 'Livrée' ? 'delivered' : ($order['status'] === 'En livraison' ? 'delivery' : '') ?>"><?= e($order['status']) ?></span></td>
     <td data-label="Montant"><strong><?= money($order['unit_price_fcfa'] * $order['quantity']) ?></strong></td>
-    <td class="order-actions"><a class="text-link" href="?<?= e(http_build_query(['q' => $search, 'status' => $statusFilter, 'order' => $order['id']])) ?>#order-detail-<?= (int) $order['id'] ?>">Voir les détails</a></td>
+    <td class="order-actions">
+      <?php if ($isExpanded): ?>
+        <a class="text-link" href="?<?= e(http_build_query(['q' => $search, 'status' => $statusFilter])) ?>#order-card-<?= (int) $order['id'] ?>" aria-expanded="true" aria-controls="order-detail-<?= (int) $order['id'] ?>">Fermer les détails ↑</a>
+      <?php else: ?>
+        <a class="text-link" href="?<?= e(http_build_query(['q' => $search, 'status' => $statusFilter, 'order' => $order['id']])) ?>#order-card-<?= (int) $order['id'] ?>" aria-expanded="false" aria-controls="order-detail-<?= (int) $order['id'] ?>">Voir les détails ↓</a>
+      <?php endif; ?>
+    </td>
   </tr>
-  <?php if ($selected === (int) $order['id']): ?>
+  <?php if ($isExpanded): ?>
     <tr id="order-detail-<?= (int) $order['id'] ?>" class="order-detail-row"><td class="order-detail-cell" colspan="7"><section class="order-detail">
+      <header class="order-detail__heading"><span>Détail ouvert</span><strong><?= e($order['product_name']) ?> · <?= e($order['variant']) ?></strong></header>
       <div class="order-detail-grid">
-        <div class="fact"><span>Coloris</span><b><?= e($order['variant']) ?></b></div><div class="fact"><span>Quantité</span><b><?= (int) $order['quantity'] ?></b></div>
-        <div class="fact"><span>Prix unitaire</span><b><?= money($order['unit_price_fcfa']) ?></b></div><div class="fact"><span>Livraison</span><b>Offerte à Bamako</b></div>
-        <div class="fact"><span>Quartier</span><b><?= e($order['district']) ?></b></div><div class="fact"><span>Paiement</span><b>À la réception</b></div>
-        <div class="fact"><span>Téléphone</span><b><?= e($order['phone']) ?></b></div><div class="fact"><span>Référence</span><b><?= e($order['order_ref']) ?></b></div>
+        <section class="order-detail-group">
+          <h3 class="order-detail-group-title">Produit commandé</h3>
+          <div class="order-detail-facts">
+            <div class="fact"><span>Coloris</span><b><?= e($order['variant']) ?></b></div><div class="fact"><span>Quantité</span><b><?= (int) $order['quantity'] ?></b></div>
+            <div class="fact fact--wide-mobile"><span>Prix unitaire</span><b><?= money($order['unit_price_fcfa']) ?></b></div>
+          </div>
+        </section>
+        <section class="order-detail-group">
+          <h3 class="order-detail-group-title">Client et livraison</h3>
+          <div class="order-detail-facts">
+            <div class="fact"><span>Livraison</span><b>Offerte à Bamako</b></div><div class="fact"><span>Paiement</span><b>À la réception</b></div>
+            <div class="fact"><span>Quartier</span><b><?= e($order['district']) ?></b></div><div class="fact"><span>Téléphone</span><b><a href="tel:<?= e($order['phone']) ?>"><?= e($order['phone']) ?></a></b></div>
+            <div class="fact fact--wide-mobile"><span>Référence</span><b><?= e($order['order_ref']) ?></b></div>
+          </div>
+        </section>
       </div>
+      <h3 class="order-detail-group-title order-detail-actions-title">Suivi et actions</h3>
       <?php if ($order['status'] === 'Livrée'): ?>
         <p class="admin-copy">Cette référence a été livrée. Son historique financier est protégé contre toute modification directe.</p>
         <?php if (isset($selectedFinanceError)): ?>
@@ -162,6 +182,7 @@ require APP_ROOT . '/templates/admin-header.php';
           <?php if ($order['status'] !== 'Annulée'): ?><a class="admin-button" href="<?= e(url('/admin/accounting-delivery.php?order=' . (int) $order['id'])) ?>">Encaisser & livrer</a><?php endif; ?>
         </form>
       <?php endif; ?>
+      <a class="order-detail-close" href="?<?= e(http_build_query(['q' => $search, 'status' => $statusFilter])) ?>#order-card-<?= (int) $order['id'] ?>">Fermer les détails ↑</a>
     </section></td></tr>
   <?php endif; ?>
 <?php endforeach; ?>
