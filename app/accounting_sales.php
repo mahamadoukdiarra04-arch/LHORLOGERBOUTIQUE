@@ -147,6 +147,25 @@ function accounting_normalize_direct_sale_items(mixed $input): array {
     return $items;
 }
 
+function accounting_direct_sale_totals(array $items): array {
+    $subtotal = 0;
+    $discountTotal = 0;
+    foreach ($items as $item) {
+        $gross = accounting_historical_cogs_fcfa((int) $item['quantity'], (int) $item['unit_price_fcfa']);
+        $discount = (int) $item['discount_fcfa'];
+        if ($gross > PHP_INT_MAX - $subtotal || $discount > PHP_INT_MAX - $discountTotal) {
+            throw new RuntimeException('Le total de vente est trop élevé.');
+        }
+        $subtotal += $gross;
+        $discountTotal += $discount;
+    }
+    return [
+        'subtotal_fcfa' => $subtotal,
+        'discount_total_fcfa' => $discountTotal,
+        'total_fcfa' => $subtotal - $discountTotal,
+    ];
+}
+
 function accounting_create_direct_sale(PDO $pdo, array $data, ?int $userId = null): array {
     ensure_accounting_schema();
     $idempotencyKey = accounting_uuid($data['idempotency_key'] ?? null);
@@ -196,15 +215,10 @@ function accounting_create_direct_sale(PDO $pdo, array $data, ?int $userId = nul
                 $unitCosts[$key] = $cost;
             }
         }
-        $subtotal = 0;
-        $discountTotal = 0;
-        foreach ($items as $item) {
-            $gross = accounting_historical_cogs_fcfa($item['quantity'], $item['unit_price_fcfa']);
-            if ($gross > PHP_INT_MAX - $subtotal || $item['discount_fcfa'] > PHP_INT_MAX - $discountTotal) throw new RuntimeException('Le total de vente est trop élevé.');
-            $subtotal += $gross;
-            $discountTotal += $item['discount_fcfa'];
-        }
-        $total = $subtotal - $discountTotal;
+        $totals = accounting_direct_sale_totals($items);
+        $subtotal = $totals['subtotal_fcfa'];
+        $discountTotal = $totals['discount_total_fcfa'];
+        $total = $totals['total_fcfa'];
         $payments = accounting_normalize_delivery_payments($pdo, $data['payments'] ?? null);
         if (accounting_sum_payment_amounts($payments) !== $total) throw new RuntimeException('Les encaissements doivent être exactement égaux au total de la vente directe.');
         $insertSale = $pdo->prepare(

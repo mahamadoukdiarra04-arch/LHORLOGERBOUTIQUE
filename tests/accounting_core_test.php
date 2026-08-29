@@ -128,6 +128,12 @@ $directSaleItems = accounting_normalize_direct_sale_items([[
 ]]);
 accounting_test_same(7, $directSaleItems[0]['variant_id'], 'Le coloris de la vente directe est conservé par son identifiant de stock.');
 accounting_test_same(49000, $directSaleItems[0]['line_total_fcfa'], 'Le total de la ligne directe reste exact après sélection du coloris.');
+$directSaleTotals = accounting_direct_sale_totals(array_merge($directSaleItems, [[
+    'quantity' => 1, 'unit_price_fcfa' => 30000, 'discount_fcfa' => 5000,
+]]));
+accounting_test_same(80000, $directSaleTotals['subtotal_fcfa'], 'Le sous-total multi-produits additionne toutes les lignes.');
+accounting_test_same(6000, $directSaleTotals['discount_total_fcfa'], 'Les remises de toutes les lignes sont additionnées.');
+accounting_test_same(74000, $directSaleTotals['total_fcfa'], 'Le total à encaisser déduit toutes les remises du sous-total.');
 
 $transfer = ['nature' => 'transfer', 'account_id' => 3, 'destination_account_id' => 4, 'amount_fcfa' => 10000];
 accounting_test_same(-10000, accounting_operation_effect_fcfa($transfer, 3), 'Le compte source d’un transfert est débité.');
