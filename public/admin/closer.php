@@ -81,23 +81,23 @@ require APP_ROOT . '/templates/admin-header.php';
 <section class="admin-panel" style="margin-top:15px">
   <p class="admin-kicker">Historique opérationnel</p>
   <h2>Commandes prises en charge.</h2>
-  <div class="admin-table-wrap">
-    <table class="admin-table closer-admin-table">
+  <div class="admin-table-wrap mobile-card-table-wrap">
+    <table class="admin-table closer-admin-table mobile-card-table">
       <thead><tr><th>Closeuse</th><th>Commande</th><th>Client</th><th>Produit</th><th>Suivi</th><th>Rappel</th><th>Canal</th><th>Livraison</th></tr></thead>
       <tbody>
       <?php foreach ($tracking as $item): ?>
-        <tr>
-          <td><strong><?= e($item['closer_identity']) ?></strong></td>
-          <td><strong><?= e($item['order_ref']) ?></strong><br><small><?= e(date('d/m/Y H:i', strtotime($item['created_at']))) ?></small></td>
-          <td><?= e($item['customer_first_name'] . ' ' . $item['customer_last_name']) ?><br><a href="tel:<?= e($item['phone']) ?>"><small><?= e($item['phone']) ?></small></a><br><small><?= e($item['district']) ?></small></td>
-          <td><?= e($item['product_name']) ?><br><small><?= e($item['variant']) ?> · Qté <?= (int) $item['quantity'] ?></small></td>
-          <td><span class="status status-<?= e(strtolower(str_replace([' ', 'é', 'à'], ['-', 'e', 'a'], $item['follow_up_status']))) ?>"><?= e($item['follow_up_status']) ?></span><?php if ($item['note']): ?><br><small><?= e($item['note']) ?></small><?php endif; ?></td>
-          <td><?= $item['follow_up_at'] ? e(date('d/m/Y H:i', strtotime($item['follow_up_at']))) : '—' ?></td>
-          <td><?= e((string) ($item['acquisition_channel'] ?? '—')) ?></td>
-          <td><?= $item['whatsapp_prepared_at'] ? 'WhatsApp prêt · ' . e(date('d/m H:i', strtotime($item['whatsapp_prepared_at']))) : '—' ?></td>
+        <tr class="mobile-card-row">
+          <td data-label="Closeuse"><strong><?= e($item['closer_identity']) ?></strong></td>
+          <td data-label="Commande"><strong><?= e($item['order_ref']) ?></strong><br><small><?= e(date('d/m/Y H:i', strtotime($item['created_at']))) ?></small></td>
+          <td data-label="Client"><?= e($item['customer_first_name'] . ' ' . $item['customer_last_name']) ?><br><a href="tel:<?= e($item['phone']) ?>"><small><?= e($item['phone']) ?></small></a><br><small><?= e($item['district']) ?></small></td>
+          <td data-label="Produit"><?= e($item['product_name']) ?><br><small><?= e($item['variant']) ?> · Qté <?= (int) $item['quantity'] ?></small></td>
+          <td data-label="Suivi"><span class="status status-<?= e(strtolower(str_replace([' ', 'é', 'à'], ['-', 'e', 'a'], $item['follow_up_status']))) ?>"><?= e($item['follow_up_status']) ?></span><?php if ($item['note']): ?><br><small><?= e($item['note']) ?></small><?php endif; ?></td>
+          <td data-label="Rappel"><?= $item['follow_up_at'] ? e(date('d/m/Y H:i', strtotime($item['follow_up_at']))) : '—' ?></td>
+          <td data-label="Canal"><?= e((string) ($item['acquisition_channel'] ?? '—')) ?></td>
+          <td data-label="Livraison"><?= $item['whatsapp_prepared_at'] ? 'WhatsApp prêt · ' . e(date('d/m H:i', strtotime($item['whatsapp_prepared_at']))) : '—' ?></td>
         </tr>
       <?php endforeach; ?>
-      <?php if (!$tracking): ?><tr><td colspan="8" class="admin-table-empty">Aucune commande n’est encore prise en charge par la closeuse.</td></tr><?php endif; ?>
+      <?php if (!$tracking): ?><tr class="mobile-card-empty"><td colspan="8" class="admin-table-empty">Aucune commande n’est encore prise en charge par la closeuse.</td></tr><?php endif; ?>
       </tbody>
     </table>
   </div>

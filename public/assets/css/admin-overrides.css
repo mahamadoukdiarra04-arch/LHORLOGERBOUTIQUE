@@ -59,3 +59,385 @@
   .user-card__form { grid-template-columns:1fr; }
   .user-card__form .wide { grid-column:auto; }
 }
+
+/* Mobile admin: preserve the desktop UI while making every action easy to tap. */
+@media (max-width: 700px) {
+  .admin-top {
+    gap: 10px;
+    padding: 10px 14px;
+  }
+
+  .admin-top .brand-logo,
+  .admin-top > div > a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  .admin-top > div {
+    gap: 8px;
+  }
+
+  .admin-top > div > a {
+    padding: 0 6px;
+  }
+
+  .admin-nav {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    gap: 8px;
+    padding: 8px 12px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    box-shadow: 0 4px 12px rgba(23, 55, 97, .07);
+  }
+
+  .admin-nav::-webkit-scrollbar,
+  .accounting-tabs::-webkit-scrollbar,
+  .accounting-action-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .admin-nav a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 46px;
+    margin: 0;
+    padding: 12px 15px;
+    scroll-snap-align: start;
+  }
+
+  .admin-main {
+    padding: 22px 14px 52px;
+  }
+
+  .admin-page-head {
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+
+  .admin-page-head h1 {
+    font-size: clamp(31px, 10vw, 42px);
+    line-height: 1.02;
+  }
+
+  .admin-page-head > div > p:last-child,
+  .admin-copy {
+    font-size: 14px;
+    line-height: 1.55;
+  }
+
+  .metric,
+  .admin-card,
+  .admin-panel,
+  .user-card,
+  .category-card {
+    padding: 16px;
+  }
+
+  .admin-panel h2 {
+    font-size: clamp(23px, 7vw, 28px);
+    line-height: 1.12;
+  }
+
+  .admin-main input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+  .admin-main select,
+  .admin-main textarea {
+    min-height: 48px;
+    font-size: 16px;
+  }
+
+  .admin-main textarea {
+    min-height: 100px;
+  }
+
+  .admin-main button,
+  .admin-main .admin-button,
+  .admin-main .text-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 46px;
+  }
+
+  .admin-main button,
+  .admin-main .admin-button {
+    padding: 12px 16px;
+    font-size: 13px;
+  }
+
+  .admin-main .text-link {
+    padding: 7px 4px;
+  }
+
+  .admin-filter,
+  .inline-form,
+  .data-form,
+  .accounting-filter,
+  .accounting-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    width: 100%;
+  }
+
+  .admin-filter > *,
+  .inline-form > *,
+  .inline-form label,
+  .inline-form .admin-button,
+  .data-form > *,
+  .data-form label,
+  .accounting-filter > *,
+  .accounting-form > * {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .admin-period {
+    width: 100%;
+    gap: 8px;
+  }
+
+  .admin-period > a {
+    display: inline-flex;
+    flex: 1 1 calc(50% - 4px);
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 10px 12px;
+    text-align: center;
+  }
+
+  .admin-period .custom-period {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+
+  .admin-period .custom-period input {
+    width: 100%;
+    max-width: none;
+  }
+
+  .admin-period .custom-period .admin-button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .admin-panel__head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-panel__head > a,
+  .accounting-reset {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  .accounting-tabs,
+  .accounting-action-tabs {
+    gap: 8px;
+    scrollbar-width: none;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .accounting-tabs a,
+  .accounting-action-tabs a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 46px;
+    padding: 12px 14px;
+    scroll-snap-align: start;
+  }
+
+  .accounting-custom-period {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .accounting-custom-period label {
+    width: 100%;
+  }
+
+  .accounting-custom-period button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .accounting-pagination {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .accounting-pagination a {
+    min-width: 44px;
+    height: 44px;
+  }
+
+  .accounting-check,
+  .user-toggle,
+  .delivery-exception {
+    min-height: 48px !important;
+    padding: 8px 0;
+  }
+
+  .accounting-check input,
+  .user-toggle input,
+  .delivery-exception input {
+    width: 24px !important;
+    height: 24px !important;
+    min-height: 24px !important;
+    flex: 0 0 24px;
+  }
+
+  .journal-card {
+    min-height: 76px;
+    padding: 15px;
+  }
+
+  .stock-card__action {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    margin-top: 10px;
+  }
+
+  .variant-stock-card {
+    min-height: 60px;
+    padding: 12px;
+  }
+
+  .mobile-card-table-wrap {
+    overflow: visible;
+  }
+
+  .mobile-card-table {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .mobile-card-table thead {
+    display: none;
+  }
+
+  .mobile-card-table tbody {
+    display: grid;
+    gap: 12px;
+  }
+
+  .mobile-card-table .mobile-card-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px 12px;
+    padding: 15px;
+    border: 1px solid #dbe5f0;
+    border-radius: 10px;
+    background: #fff;
+  }
+
+  .mobile-card-table .mobile-card-row > td {
+    display: grid;
+    align-content: start;
+    gap: 5px;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .mobile-card-table .mobile-card-row > td::before {
+    content: attr(data-label);
+    color: #60718a;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+  }
+
+  .mobile-card-table .mobile-card-row > td small {
+    margin-top: 0;
+  }
+
+  .orders-table .order-actions {
+    grid-column: 1 / -1;
+  }
+
+  .orders-table .order-actions::before {
+    display: none;
+  }
+
+  .orders-table .order-actions .text-link {
+    width: 100%;
+    border: 1px solid #bdd2e7;
+    border-radius: 7px;
+    background: #f1f7fc;
+    color: #07599b;
+    font-weight: 800;
+  }
+
+  .mobile-card-table .order-detail-row {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid #cddceb;
+    border-radius: 10px;
+    background: #f7faff;
+  }
+
+  .mobile-card-table .order-detail-cell {
+    display: block;
+    padding: 0;
+    border: 0;
+  }
+
+  .order-detail {
+    padding: 14px;
+  }
+
+  .order-detail-grid {
+    gap: 8px;
+  }
+
+  .fact {
+    padding: 11px;
+  }
+
+  .mobile-card-empty {
+    display: block;
+  }
+
+  .mobile-card-empty > td {
+    display: block;
+    width: 100%;
+    padding: 24px 12px;
+    border: 0;
+    text-align: center;
+  }
+}
+
+@media (max-width: 420px) {
+  .mobile-card-table .mobile-card-row,
+  .order-detail-grid,
+  .operation-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .orders-table .order-actions {
+    grid-column: auto;
+  }
+
+  .event {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    padding: 14px;
+  }
+}
