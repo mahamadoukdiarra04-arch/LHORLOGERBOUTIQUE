@@ -50,6 +50,7 @@
 .order-detail__heading,
 .order-detail-group-title,
 .order-detail-close { display: none; }
+.order-action-arrow { display: none; }
 
 @media (max-width: 560px) {
   .data-form {
@@ -399,6 +400,11 @@
     background: #f1f7fc;
     color: #07599b;
     font-weight: 800;
+  }
+
+  .order-action-arrow {
+    display: inline;
+    margin-left: 4px;
   }
 
   .orders-table .mobile-card-row.is-expanded {

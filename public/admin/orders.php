@@ -137,9 +137,9 @@ require APP_ROOT . '/templates/admin-header.php';
     <td data-label="Montant"><strong><?= money($order['unit_price_fcfa'] * $order['quantity']) ?></strong></td>
     <td class="order-actions">
       <?php if ($isExpanded): ?>
-        <a class="text-link" href="?<?= e(http_build_query(['q' => $search, 'status' => $statusFilter])) ?>#order-card-<?= (int) $order['id'] ?>" aria-expanded="true" aria-controls="order-detail-<?= (int) $order['id'] ?>">Fermer les détails ↑</a>
+        <a class="text-link" href="?<?= e(http_build_query(['q' => $search, 'status' => $statusFilter])) ?>#order-card-<?= (int) $order['id'] ?>" aria-expanded="true" aria-controls="order-detail-<?= (int) $order['id'] ?>">Fermer les détails <span class="order-action-arrow" aria-hidden="true">↑</span></a>
       <?php else: ?>
-        <a class="text-link" href="?<?= e(http_build_query(['q' => $search, 'status' => $statusFilter, 'order' => $order['id']])) ?>#order-card-<?= (int) $order['id'] ?>" aria-expanded="false" aria-controls="order-detail-<?= (int) $order['id'] ?>">Voir les détails ↓</a>
+        <a class="text-link" href="?<?= e(http_build_query(['q' => $search, 'status' => $statusFilter, 'order' => $order['id']])) ?>#order-card-<?= (int) $order['id'] ?>" aria-expanded="false" aria-controls="order-detail-<?= (int) $order['id'] ?>">Voir les détails <span class="order-action-arrow" aria-hidden="true">↓</span></a>
       <?php endif; ?>
     </td>
   </tr>
@@ -182,7 +182,7 @@ require APP_ROOT . '/templates/admin-header.php';
           <?php if ($order['status'] !== 'Annulée'): ?><a class="admin-button" href="<?= e(url('/admin/accounting-delivery.php?order=' . (int) $order['id'])) ?>">Encaisser & livrer</a><?php endif; ?>
         </form>
       <?php endif; ?>
-      <a class="order-detail-close" href="?<?= e(http_build_query(['q' => $search, 'status' => $statusFilter])) ?>#order-card-<?= (int) $order['id'] ?>">Fermer les détails ↑</a>
+      <a class="order-detail-close" href="?<?= e(http_build_query(['q' => $search, 'status' => $statusFilter])) ?>#order-card-<?= (int) $order['id'] ?>">Fermer les détails <span class="order-action-arrow" aria-hidden="true">↑</span></a>
     </section></td></tr>
   <?php endif; ?>
 <?php endforeach; ?>
