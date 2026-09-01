@@ -52,6 +52,127 @@
 .order-detail-close { display: none; }
 .order-action-arrow { display: none; }
 
+.order-edit-panel {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid #cbdbea;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.order-edit-panel.is-locked {
+  background: #f8fafc;
+}
+
+.order-edit-panel.is-locked h3,
+.order-edit-panel.is-locked p {
+  margin-bottom: 6px;
+}
+
+.order-edit-panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 16px;
+}
+
+.order-edit-panel__head h3 {
+  margin: 3px 0 0;
+  color: #173761;
+  font-size: 22px;
+}
+
+.order-edit-panel__head > span {
+  max-width: 340px;
+  color: #60718a;
+  font-size: 11px;
+  line-height: 1.45;
+  text-align: right;
+}
+
+.order-edit-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.order-edit-form fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid #dbe5f0;
+  border-radius: 8px;
+  background: #f9fbfd;
+}
+
+.order-edit-form legend {
+  padding: 0 6px;
+  color: #173761;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.order-edit-form fieldset > p {
+  margin: 0 0 11px;
+  color: #60718a;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.order-edit-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.order-edit-fields label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: #5a6e88;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.order-edit-fields input,
+.order-edit-fields select {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 9px;
+  border: 1px solid #cbd9e7;
+  border-radius: 6px;
+  background: #fff;
+  color: #173761;
+}
+
+.order-edit-total {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 7px;
+  background: #eaf3fb;
+  color: #173761;
+}
+
+.order-edit-total span {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.order-edit-total strong {
+  font-size: 18px;
+  white-space: nowrap;
+}
+
+.order-edit-form > .admin-button {
+  width: 100%;
+}
+
 /* Vente directe: une ligne utile au départ, extensible à la demande. */
 .direct-sale-builder {
   gap: 12px;
@@ -270,6 +391,41 @@
 
 /* Mobile admin: preserve the desktop UI while making every action easy to tap. */
 @media (max-width: 700px) {
+  .order-edit-panel {
+    margin-top: 14px;
+    padding: 14px;
+  }
+
+  .order-edit-panel__head {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .order-edit-panel__head > span {
+    max-width: none;
+    text-align: left;
+  }
+
+  .order-edit-form,
+  .order-edit-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .order-edit-form fieldset {
+    padding: 13px;
+  }
+
+  .order-edit-total {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .order-edit-total strong {
+    white-space: normal;
+  }
+
   .admin-top {
     gap: 10px;
     padding: 10px 14px;

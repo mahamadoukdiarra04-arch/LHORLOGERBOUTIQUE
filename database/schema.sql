@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS orders (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   delivered_at DATETIME NULL,
-  INDEX idx_orders_ref (order_ref), INDEX idx_orders_status (status), INDEX idx_orders_created (created_at), INDEX idx_orders_ref_status (order_ref, status),
+  INDEX idx_orders_ref (order_ref), INDEX idx_orders_status (status), INDEX idx_orders_created (created_at), INDEX idx_orders_ref_status (order_ref, status), INDEX idx_orders_variant (variant_id),
   CONSTRAINT fk_orders_product FOREIGN KEY (product_id) REFERENCES products(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

@@ -135,6 +135,28 @@ accounting_test_same(80000, $directSaleTotals['subtotal_fcfa'], 'Le sous-total m
 accounting_test_same(6000, $directSaleTotals['discount_total_fcfa'], 'Les remises de toutes les lignes sont additionnées.');
 accounting_test_same(74000, $directSaleTotals['total_fcfa'], 'Le total à encaisser déduit toutes les remises du sous-total.');
 
+$orderEdit = accounting_normalize_order_edit_payload([
+    'customer_first_name' => 'Awa',
+    'customer_last_name' => 'Diarra',
+    'phone' => '+22370000000',
+    'district' => 'Hamdallaye',
+    'product_id' => '2',
+    'variant_id' => '7',
+    'quantity' => '2',
+    'unit_price_fcfa' => '25000',
+]);
+accounting_test_same(7, $orderEdit['variant_id'], 'La modification de commande conserve le coloris choisi dans le stock.');
+accounting_test_same(2, $orderEdit['quantity'], 'La quantité modifiée reste un entier contrôlé.');
+accounting_test_same(25000, $orderEdit['unit_price_fcfa'], 'Le prix modifié reste un montant FCFA entier.');
+accounting_test_throws(static fn () => accounting_normalize_order_edit_payload([
+    'customer_first_name' => 'Awa', 'customer_last_name' => 'Diarra', 'phone' => '123', 'district' => 'Hamdallaye',
+    'product_id' => '2', 'variant_id' => '7', 'quantity' => '1', 'unit_price_fcfa' => '25000',
+]), 'Un numéro trop court doit être refusé avant toute modification de commande.');
+accounting_test_throws(static fn () => accounting_normalize_order_edit_payload([
+    'customer_first_name' => 'Awa', 'customer_last_name' => 'Diarra', 'phone' => '+22370000000', 'district' => 'Hamdallaye',
+    'product_id' => '2', 'variant_id' => '7', 'quantity' => '101', 'unit_price_fcfa' => '25000',
+]), 'Une quantité anormale doit être refusée avant toute modification de commande.');
+
 $transfer = ['nature' => 'transfer', 'account_id' => 3, 'destination_account_id' => 4, 'amount_fcfa' => 10000];
 accounting_test_same(-10000, accounting_operation_effect_fcfa($transfer, 3), 'Le compte source d’un transfert est débité.');
 accounting_test_same(10000, accounting_operation_effect_fcfa($transfer, 4), 'Le compte destinataire d’un transfert est crédité.');

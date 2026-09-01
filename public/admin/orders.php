@@ -18,6 +18,19 @@ function orders_statuses_without_delivery(): array {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $orderId = (int) ($_POST['order_id'] ?? 0);
+    $formAction = (string) ($_POST['form_action'] ?? 'update_status');
+
+    if ($formAction === 'edit_order') {
+        try {
+            $result = accounting_update_order_before_payment($pdo, $orderId, $_POST, accounting_current_user_id());
+            flash('success', 'Commande ' . $result['order_ref'] . ' modifiée. Le nouveau total sera repris à l’encaissement.');
+        } catch (Throwable $exception) {
+            error_log('L’Horloger: modification avant encaissement échouée.');
+            flash('error', accounting_safe_error_message($exception, 'La commande n’a pas pu être modifiée. Réessayez dans quelques instants.'));
+        }
+        redirect('/admin/orders.php?order=' . $orderId . '#order-detail-' . $orderId);
+    }
+
     $status = (string) ($_POST['status'] ?? '');
     $channel = (string) ($_POST['channel'] ?? '');
 
@@ -83,6 +96,7 @@ $sql = 'SELECT o.* FROM orders o' . ($where ? ' WHERE ' . implode(' AND ', $wher
 $statement = $pdo->prepare($sql);
 $statement->execute($params);
 $orders = $statement->fetchAll();
+$orderEditCatalog = accounting_order_edit_catalog($pdo);
 
 $selectedOrder = null;
 foreach ($orders as $candidate) {
@@ -94,6 +108,10 @@ foreach ($orders as $candidate) {
 $selectedFinance = null;
 $selectedFinanceTracked = false;
 $selectedOpenException = false;
+$selectedEditability = null;
+if ($selectedOrder) {
+    $selectedEditability = accounting_order_editability($pdo, (string) $selectedOrder['order_ref']);
+}
 if ($selectedOrder && $selectedOrder['status'] === 'Livrée') {
     try {
         $selectedFinanceTracked = accounting_order_has_confirmed_entries($pdo, (string) $selectedOrder['order_ref']);
@@ -163,6 +181,43 @@ require APP_ROOT . '/templates/admin-header.php';
           </div>
         </section>
       </div>
+      <?php if ($selectedEditability && $selectedEditability['editable']): ?>
+        <?php $currentVariants = $orderEditCatalog[(int) $order['product_id']]['variants'] ?? []; ?>
+        <section class="order-edit-panel">
+          <div class="order-edit-panel__head">
+            <div><p class="admin-kicker">Avant encaissement</p><h3>Modifier la commande.</h3></div>
+            <span>Les coordonnées s’appliquent à toute la référence.</span>
+          </div>
+          <form class="order-edit-form" method="post" data-order-edit-form>
+            <?= csrf_field() ?>
+            <input type="hidden" name="form_action" value="edit_order">
+            <input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>">
+            <fieldset>
+              <legend>Client et livraison</legend>
+              <div class="order-edit-fields">
+                <label>Prénom<input name="customer_first_name" value="<?= e($order['customer_first_name']) ?>" maxlength="100" required></label>
+                <label>Nom<input name="customer_last_name" value="<?= e($order['customer_last_name']) ?>" maxlength="100" required></label>
+                <label>Téléphone<input name="phone" value="<?= e($order['phone']) ?>" maxlength="32" inputmode="tel" required></label>
+                <label>Quartier<input name="district" value="<?= e($order['district']) ?>" maxlength="150" required></label>
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>Ligne de commande</legend>
+              <p>Le produit et le coloris concernent uniquement cette ligne de la référence.</p>
+              <div class="order-edit-fields">
+                <label>Produit<select name="product_id" data-order-edit-product required><?php foreach ($orderEditCatalog as $product): ?><option value="<?= (int) $product['id'] ?>" data-price="<?= (int) $product['price_fcfa'] ?>" <?= (int) $order['product_id'] === (int) $product['id'] ? 'selected' : '' ?>><?= e($product['name']) ?></option><?php endforeach; ?></select></label>
+                <label>Coloris<select name="variant_id" data-order-edit-variant required><?php foreach ($currentVariants as $variant): ?><option value="<?= (int) $variant['id'] ?>" <?= ((int) ($order['variant_id'] ?? 0) === (int) $variant['id'] || ((int) ($order['variant_id'] ?? 0) === 0 && $order['variant'] === $variant['name'])) ? 'selected' : '' ?>><?= e($variant['name']) ?> · stock <?= (int) $variant['stock_quantity'] ?></option><?php endforeach; ?></select></label>
+                <label>Quantité<input type="number" name="quantity" value="<?= (int) $order['quantity'] ?>" min="1" max="100" inputmode="numeric" required></label>
+                <label>Prix unitaire FCFA<input type="number" name="unit_price_fcfa" value="<?= (int) $order['unit_price_fcfa'] ?>" min="1" max="100000000" inputmode="numeric" data-order-edit-price required></label>
+              </div>
+            </fieldset>
+            <div class="order-edit-total"><span>Nouveau total de cette ligne</span><strong data-order-edit-total><?= money((int) $order['quantity'] * (int) $order['unit_price_fcfa']) ?></strong></div>
+            <button class="admin-button" type="submit">Enregistrer les modifications</button>
+          </form>
+        </section>
+      <?php elseif ($selectedEditability && $order['status'] !== 'Livrée'): ?>
+        <section class="order-edit-panel is-locked"><p class="admin-kicker">Modification verrouillée</p><h3>Cette commande ne peut plus être modifiée.</h3><p><?= e((string) $selectedEditability['reason']) ?></p></section>
+      <?php endif; ?>
       <h3 class="order-detail-group-title order-detail-actions-title">Suivi et actions</h3>
       <?php if ($order['status'] === 'Livrée'): ?>
         <p class="admin-copy">Cette référence a été livrée. Son historique financier est protégé contre toute modification directe.</p>
@@ -175,7 +230,7 @@ require APP_ROOT . '/templates/admin-header.php';
         <?php endif; ?>
       <?php else: ?>
         <form class="inline-form" method="post">
-          <?= csrf_field() ?><input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>">
+          <?= csrf_field() ?><input type="hidden" name="form_action" value="update_status"><input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>">
           <label>Statut<select name="status"><?php foreach (orders_statuses_without_delivery() as $option): ?><option <?= $order['status'] === $option ? 'selected' : '' ?>><?= e($option) ?></option><?php endforeach; ?></select></label>
           <label>Canal d’acquisition<select name="channel"><option value="">À renseigner</option><?php foreach (['Meta', 'Réachat'] as $channel): ?><option <?= $order['acquisition_channel'] === $channel ? 'selected' : '' ?>><?= $channel ?></option><?php endforeach; ?></select></label>
           <button class="admin-button">Enregistrer</button>
@@ -188,4 +243,7 @@ require APP_ROOT . '/templates/admin-header.php';
 <?php endforeach; ?>
 <?php if (!$orders): ?><tr class="mobile-card-empty"><td colspan="7">Aucune commande ne correspond à ce filtre.</td></tr><?php endif; ?>
 </tbody></table></div></section>
+<script id="order-edit-catalog" type="application/json"><?= json_encode(array_values($orderEditCatalog), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
+<?php $ordersScriptVersion = (string) (@filemtime(dirname(APP_ROOT) . '/public/assets/js/admin-orders.js') ?: '1'); ?>
+<script src="<?= e(url('/assets/js/admin-orders.js?v=' . $ordersScriptVersion)) ?>" defer></script>
 <?php require APP_ROOT . '/templates/admin-footer.php'; ?>

@@ -7,6 +7,7 @@ const ACCOUNTING_VARIANT_STOCK_VERSION = '20260828_variant_stock';
 const ACCOUNTING_DIRECT_SALE_VARIANT_VERSION = '20260828_direct_sale_variant';
 const ACCOUNTING_STOCK_EFFECTIVE_VERSION = '20260828_stock_effective_at';
 const ACCOUNTING_DELIVERY_EXPENSE_CATEGORY_VERSION = '20260828_delivery_expense_category';
+const ACCOUNTING_ORDER_EDIT_VERSION = '20260901_order_edit';
 
 /**
  * The accounting foundation is deliberately initialized from PHP as well as
@@ -72,6 +73,13 @@ function ensure_accounting_schema(): void {
             accounting_add_delivery_expense_category($pdo);
             $mark = $pdo->prepare('INSERT INTO accounting_schema_migrations (version) VALUES (?)');
             $mark->execute([ACCOUNTING_DELIVERY_EXPENSE_CATEGORY_VERSION]);
+        }
+        $orderEditApplied = $pdo->prepare('SELECT 1 FROM accounting_schema_migrations WHERE version = ?');
+        $orderEditApplied->execute([ACCOUNTING_ORDER_EDIT_VERSION]);
+        if (!$orderEditApplied->fetchColumn()) {
+            accounting_add_order_edit_support($pdo);
+            $mark = $pdo->prepare('INSERT INTO accounting_schema_migrations (version) VALUES (?)');
+            $mark->execute([ACCOUNTING_ORDER_EDIT_VERSION]);
         }
         $ready = true;
     } finally {
@@ -347,6 +355,17 @@ function accounting_add_direct_sale_variant_support(PDO $pdo): void {
     );
 }
 
+function accounting_add_order_edit_support(PDO $pdo): void {
+    accounting_add_column_if_missing($pdo, 'orders', 'variant_id', 'INT UNSIGNED NULL AFTER product_id');
+    accounting_add_index_if_missing($pdo, 'orders', 'idx_orders_variant', 'INDEX idx_orders_variant (variant_id)');
+    $pdo->exec(
+        'UPDATE orders o
+         INNER JOIN product_variants pv ON pv.product_id = o.product_id AND pv.name = o.variant
+         SET o.variant_id = pv.id
+         WHERE o.variant_id IS NULL'
+    );
+}
+
 /**
  * A stock entry can be recorded after the physical event. Keep its business
  * date separate from the immutable technical creation timestamp.
@@ -613,3 +632,4 @@ require_once __DIR__ . '/accounting_sales.php';
 require_once __DIR__ . '/accounting_attachments.php';
 require_once __DIR__ . '/accounting_reports.php';
 require_once __DIR__ . '/accounting_journal.php';
+require_once __DIR__ . '/accounting_orders.php';
