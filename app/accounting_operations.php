@@ -294,6 +294,131 @@ function accounting_reverse_operation(PDO $pdo, int $operationId, string $idempo
     });
 }
 
+/**
+ * Correct the business date of a confirmed order receipt without rewriting it.
+ * The original is reversed on its own date and an exact replacement (including
+ * revenue and historical COGS allocations) is issued on the corrected date.
+ */
+function accounting_reissue_order_receipt_date(
+    PDO $pdo,
+    int $operationId,
+    string $reversalIdempotencyKey,
+    string $replacementIdempotencyKey,
+    mixed $effectiveAt,
+    mixed $reason,
+    ?int $userId = null,
+): array {
+    ensure_accounting_schema();
+    $reversalIdempotencyKey = accounting_uuid($reversalIdempotencyKey, 'La clé de contrepassation');
+    $replacementIdempotencyKey = accounting_uuid($replacementIdempotencyKey, 'La clé de remplacement');
+    if ($reversalIdempotencyKey === $replacementIdempotencyKey) {
+        throw new RuntimeException('Les deux clés de correction doivent être différentes. Rechargez la page.');
+    }
+    $correctedAt = accounting_effective_at($effectiveAt, 'La date corrigée');
+    $reason = accounting_non_empty_text($reason, 'Le motif de correction', 1000);
+
+    return accounting_with_transaction($pdo, function () use (
+        $pdo,
+        $operationId,
+        $reversalIdempotencyKey,
+        $replacementIdempotencyKey,
+        $correctedAt,
+        $reason,
+        $userId,
+    ): array {
+        $original = accounting_find_operation($pdo, $operationId, true);
+        if ($original['status'] !== 'confirmed'
+            || $original['nature'] !== 'receipt'
+            || $original['source_type'] !== 'order'
+            || empty($original['order_ref'])
+            || $original['reversal_of_id'] !== null) {
+            throw new RuntimeException('Seul un encaissement de commande confirmé peut être réémis à une autre date.');
+        }
+        if ($correctedAt === (string) $original['effective_at']) {
+            throw new RuntimeException('La nouvelle date est identique à la date actuelle.');
+        }
+
+        $existingGroup = accounting_find_operation_group_by_key($pdo, $replacementIdempotencyKey, true);
+        if ($existingGroup) {
+            if ($existingGroup['group_type'] !== 'manual'
+                || (string) ($existingGroup['order_ref'] ?? '') !== (string) $original['order_ref']) {
+                throw new RuntimeException('Cette clé de remplacement est déjà utilisée pour une autre correction.');
+            }
+            $existingOperation = $pdo->prepare('SELECT id FROM accounting_operations WHERE group_id = ? ORDER BY id ASC LIMIT 1');
+            $existingOperation->execute([(int) $existingGroup['id']]);
+            $existingId = (int) $existingOperation->fetchColumn();
+            if ($existingId < 1) throw new RuntimeException('Cette correction est incomplète. Rechargez la page.');
+            return [
+                'original' => $original,
+                'reversal' => null,
+                'replacement' => accounting_find_operation($pdo, $existingId),
+                'replayed' => true,
+            ];
+        }
+
+        $reversalResult = accounting_reverse_operation(
+            $pdo,
+            $operationId,
+            $reversalIdempotencyKey,
+            $original['effective_at'],
+            'Correction de date · ' . $reason,
+            $userId,
+        );
+        $groupResult = accounting_create_operation_group($pdo, [
+            'group_type' => 'manual',
+            'idempotency_key' => $replacementIdempotencyKey,
+            'order_ref' => $original['order_ref'],
+        ], $userId);
+        if ($groupResult['replayed']) {
+            throw new RuntimeException('Cette clé de remplacement est incomplète. Rechargez la page.');
+        }
+
+        $replacement = accounting_create_draft_operation($pdo, [
+            'group_id' => $groupResult['group']['id'],
+            'nature' => 'receipt',
+            'account_id' => $original['account_id'],
+            'category_id' => $original['category_id'],
+            'source_type' => 'order',
+            'amount_fcfa' => $original['amount_fcfa'],
+            'effective_at' => $correctedAt,
+            'label' => $original['label'],
+            'counterparty' => $original['counterparty'],
+            'payment_reference' => $original['payment_reference'],
+            'note' => mb_substr('Date corrigée depuis le ' . date('d/m/Y H:i', strtotime((string) $original['effective_at'])) . ' · ' . $reason, 0, 5000),
+        ], $userId);
+
+        $allocations = $pdo->prepare('SELECT * FROM accounting_allocations WHERE operation_id = ? ORDER BY id ASC');
+        $allocations->execute([$operationId]);
+        $copy = $pdo->prepare(
+            'INSERT INTO accounting_allocations
+             (operation_id, category_id, treatment, scope, product_id, order_id, direct_sale_item_id, amount_fcfa, effect_sign, quantity_equivalent, unit_cost_snapshot_fcfa, cogs_amount_fcfa)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        );
+        foreach ($allocations->fetchAll() as $allocation) {
+            $copy->execute([
+                $replacement['id'], $allocation['category_id'], $allocation['treatment'], $allocation['scope'],
+                $allocation['product_id'], $allocation['order_id'], $allocation['direct_sale_item_id'],
+                $allocation['amount_fcfa'], $allocation['effect_sign'], $allocation['quantity_equivalent'],
+                $allocation['unit_cost_snapshot_fcfa'], $allocation['cogs_amount_fcfa'],
+            ]);
+        }
+        $replacement = accounting_confirm_operation($pdo, (int) $replacement['id'], $userId)['operation'];
+        accounting_audit($pdo, 'reissue_order_receipt_date', 'operation', $operationId, $original, [
+            'reversal_id' => (int) $reversalResult['operation']['id'],
+            'replacement_id' => (int) $replacement['id'],
+            'corrected_effective_at' => $correctedAt,
+            'reason' => $reason,
+        ], $userId);
+
+        return [
+            'original' => $original,
+            'reversal' => $reversalResult['operation'],
+            'replacement' => $replacement,
+            'replayed' => false,
+        ];
+    });
+}
+
 function accounting_operation_effect_fcfa(array $operation, int $accountId): int {
     $amount = accounting_integer($operation['amount_fcfa'] ?? null, 'Le montant de l’opération', 1);
     $nature = (string) ($operation['nature'] ?? '');
