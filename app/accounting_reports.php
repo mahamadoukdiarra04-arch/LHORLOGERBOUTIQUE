@@ -113,8 +113,8 @@ function accounting_order_payment_summary(PDO $pdo, string $orderRef): array {
 
     $payments = $pdo->prepare(
         'SELECT
-            COALESCE(SUM(CASE WHEN a.treatment = "product_revenue" THEN a.effect_sign * a.amount_fcfa ELSE 0 END), 0) AS received_fcfa,
-            COALESCE(SUM(CASE WHEN a.treatment = "product_refund" THEN a.effect_sign * a.amount_fcfa ELSE 0 END), 0) AS refunded_fcfa
+            COALESCE(SUM(CASE WHEN a.treatment = "product_revenue" THEN a.effect_sign * CAST(a.amount_fcfa AS SIGNED) ELSE 0 END), 0) AS received_fcfa,
+            COALESCE(SUM(CASE WHEN a.treatment = "product_refund" THEN a.effect_sign * CAST(a.amount_fcfa AS SIGNED) ELSE 0 END), 0) AS refunded_fcfa
          FROM accounting_operation_groups g
          INNER JOIN accounting_operations o ON o.group_id = g.id AND o.status = "confirmed"
          INNER JOIN accounting_allocations a ON a.operation_id = o.id
@@ -141,13 +141,13 @@ function accounting_ted_report(PDO $pdo, mixed $start, mixed $end): array {
     [$startAt, $endAt] = accounting_period_bounds($start, $end);
     $statement = $pdo->prepare(
         'SELECT
-            COALESCE(SUM(CASE WHEN a.treatment = "product_revenue" THEN a.effect_sign * a.amount_fcfa ELSE 0 END), 0) AS product_revenue_fcfa,
-            COALESCE(SUM(CASE WHEN a.treatment = "product_refund" THEN a.effect_sign * a.amount_fcfa ELSE 0 END), 0) AS product_refund_fcfa,
-            COALESCE(SUM(a.effect_sign * a.cogs_amount_fcfa), 0) AS cogs_fcfa,
-            COALESCE(SUM(CASE WHEN a.treatment = "direct_expense" THEN a.effect_sign * a.amount_fcfa ELSE 0 END), 0) AS direct_expense_fcfa,
-            COALESCE(SUM(CASE WHEN a.treatment = "shop_revenue" THEN a.effect_sign * a.amount_fcfa ELSE 0 END), 0) AS shop_revenue_fcfa,
-            COALESCE(SUM(CASE WHEN a.treatment = "shop_refund" THEN a.effect_sign * a.amount_fcfa ELSE 0 END), 0) AS shop_refund_fcfa,
-            COALESCE(SUM(CASE WHEN a.treatment = "common_expense" THEN a.effect_sign * a.amount_fcfa ELSE 0 END), 0) AS common_expense_fcfa
+            COALESCE(SUM(CASE WHEN a.treatment = "product_revenue" THEN a.effect_sign * CAST(a.amount_fcfa AS SIGNED) ELSE 0 END), 0) AS product_revenue_fcfa,
+            COALESCE(SUM(CASE WHEN a.treatment = "product_refund" THEN a.effect_sign * CAST(a.amount_fcfa AS SIGNED) ELSE 0 END), 0) AS product_refund_fcfa,
+            COALESCE(SUM(a.effect_sign * CAST(a.cogs_amount_fcfa AS SIGNED)), 0) AS cogs_fcfa,
+            COALESCE(SUM(CASE WHEN a.treatment = "direct_expense" THEN a.effect_sign * CAST(a.amount_fcfa AS SIGNED) ELSE 0 END), 0) AS direct_expense_fcfa,
+            COALESCE(SUM(CASE WHEN a.treatment = "shop_revenue" THEN a.effect_sign * CAST(a.amount_fcfa AS SIGNED) ELSE 0 END), 0) AS shop_revenue_fcfa,
+            COALESCE(SUM(CASE WHEN a.treatment = "shop_refund" THEN a.effect_sign * CAST(a.amount_fcfa AS SIGNED) ELSE 0 END), 0) AS shop_refund_fcfa,
+            COALESCE(SUM(CASE WHEN a.treatment = "common_expense" THEN a.effect_sign * CAST(a.amount_fcfa AS SIGNED) ELSE 0 END), 0) AS common_expense_fcfa
          FROM accounting_allocations a
          INNER JOIN accounting_operations o ON o.id = a.operation_id AND o.status = "confirmed"
          WHERE o.effective_at BETWEEN ? AND ?'
@@ -184,11 +184,11 @@ function accounting_product_results(PDO $pdo, mixed $start, mixed $end): array {
     [$startAt, $endAt] = accounting_period_bounds($start, $end);
     $statement = $pdo->prepare(
         'SELECT a.product_id, p.name AS product_name,
-            COALESCE(SUM(CASE WHEN a.treatment = "product_revenue" THEN a.effect_sign * a.amount_fcfa ELSE 0 END), 0) AS revenue_fcfa,
-            COALESCE(SUM(CASE WHEN a.treatment = "product_refund" THEN a.effect_sign * a.amount_fcfa ELSE 0 END), 0) AS refund_fcfa,
-            COALESCE(SUM(a.effect_sign * a.cogs_amount_fcfa), 0) AS cogs_fcfa,
-            COALESCE(SUM(CASE WHEN a.treatment = "direct_expense" THEN a.effect_sign * a.amount_fcfa ELSE 0 END), 0) AS direct_expense_fcfa,
-            COALESCE(SUM(CASE WHEN c.code = "meta_ads" THEN a.effect_sign * a.amount_fcfa ELSE 0 END), 0) AS meta_ads_fcfa
+            COALESCE(SUM(CASE WHEN a.treatment = "product_revenue" THEN a.effect_sign * CAST(a.amount_fcfa AS SIGNED) ELSE 0 END), 0) AS revenue_fcfa,
+            COALESCE(SUM(CASE WHEN a.treatment = "product_refund" THEN a.effect_sign * CAST(a.amount_fcfa AS SIGNED) ELSE 0 END), 0) AS refund_fcfa,
+            COALESCE(SUM(a.effect_sign * CAST(a.cogs_amount_fcfa AS SIGNED)), 0) AS cogs_fcfa,
+            COALESCE(SUM(CASE WHEN a.treatment = "direct_expense" THEN a.effect_sign * CAST(a.amount_fcfa AS SIGNED) ELSE 0 END), 0) AS direct_expense_fcfa,
+            COALESCE(SUM(CASE WHEN c.code = "meta_ads" THEN a.effect_sign * CAST(a.amount_fcfa AS SIGNED) ELSE 0 END), 0) AS meta_ads_fcfa
          FROM accounting_allocations a
          INNER JOIN accounting_operations o ON o.id = a.operation_id AND o.status = "confirmed"
          LEFT JOIN products p ON p.id = a.product_id
