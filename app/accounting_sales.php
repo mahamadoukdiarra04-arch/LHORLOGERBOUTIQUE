@@ -9,11 +9,11 @@ function accounting_order_lines_by_ref(PDO $pdo, string $orderRef, bool $lock = 
 /** @return array<int,int> amount already received for each order line */
 function accounting_order_line_receipts(PDO $pdo, string $orderRef): array {
     $statement = $pdo->prepare(
-        'SELECT a.order_id, COALESCE(SUM(a.amount_fcfa), 0) AS received_fcfa
+        'SELECT a.order_id, COALESCE(SUM(a.effect_sign * a.amount_fcfa), 0) AS received_fcfa
          FROM accounting_allocations a
-         INNER JOIN accounting_operations o ON o.id = a.operation_id AND o.status = "confirmed" AND o.nature = "receipt"
+         INNER JOIN accounting_operations o ON o.id = a.operation_id AND o.status = "confirmed"
          INNER JOIN accounting_operation_groups g ON g.id = o.group_id
-         WHERE g.order_ref = ? AND a.order_id IS NOT NULL AND a.amount_fcfa > 0
+         WHERE g.order_ref = ? AND a.order_id IS NOT NULL AND a.treatment = "product_revenue" AND a.amount_fcfa > 0
          GROUP BY a.order_id'
     );
     $statement->execute([$orderRef]);

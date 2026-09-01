@@ -113,10 +113,11 @@ function accounting_order_payment_summary(PDO $pdo, string $orderRef): array {
 
     $payments = $pdo->prepare(
         'SELECT
-            COALESCE(SUM(CASE WHEN o.nature = "receipt" THEN o.amount_fcfa ELSE 0 END), 0) AS received_fcfa,
-            COALESCE(SUM(CASE WHEN o.nature = "disbursement" THEN o.amount_fcfa ELSE 0 END), 0) AS refunded_fcfa
+            COALESCE(SUM(CASE WHEN a.treatment = "product_revenue" THEN a.effect_sign * a.amount_fcfa ELSE 0 END), 0) AS received_fcfa,
+            COALESCE(SUM(CASE WHEN a.treatment = "product_refund" THEN a.effect_sign * a.amount_fcfa ELSE 0 END), 0) AS refunded_fcfa
          FROM accounting_operation_groups g
          INNER JOIN accounting_operations o ON o.group_id = g.id AND o.status = "confirmed"
+         INNER JOIN accounting_allocations a ON a.operation_id = o.id
          WHERE g.order_ref = ?'
     );
     $payments->execute([$orderRef]);
