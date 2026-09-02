@@ -9,6 +9,30 @@ function accounting_journal_filter_options(): array {
     ];
 }
 
+function accounting_journal_group_labels(): array {
+    return [
+        'delivery' => 'Ventes livrées & encaissées',
+        'balance_collection' => 'Reliquats encaissés',
+        'direct_sale' => 'Ventes directes',
+        'manual' => 'Actions manuelles',
+        'transfer' => 'Transferts',
+        'refund' => 'Remboursements',
+        'reversal' => 'Contrepassations',
+    ];
+}
+
+/**
+ * Keep immutable operation labels untouched while making their business event
+ * immediately recognizable in every Journal presentation.
+ */
+function accounting_journal_display_label(array $operation): string {
+    if (($operation['group_type'] ?? '') === 'delivery' && ($operation['nature'] ?? '') === 'receipt') {
+        $orderRef = trim((string) ($operation['order_ref'] ?? ''));
+        return 'Vente livrée & encaissée' . ($orderRef !== '' ? ' · ' . $orderRef : '');
+    }
+    return (string) ($operation['label'] ?? 'Écriture comptable');
+}
+
 function accounting_journal_filters(array $input): array {
     $options = accounting_journal_filter_options();
     $groupType = trim((string) ($input['group_type'] ?? ''));

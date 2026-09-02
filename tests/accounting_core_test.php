@@ -67,6 +67,25 @@ accounting_test_same('partiellement encaissée', accounting_payment_state(55000,
 accounting_test_same('encaissée', accounting_payment_state(55000, 55000, 0), 'Un paiement exact est encaissé.');
 accounting_test_same('remboursée', accounting_payment_state(55000, 55000, 55000), 'Un paiement entièrement remboursé est identifié.');
 accounting_test_same('sur-encaissée à régulariser', accounting_payment_state(55000, 56000, 0), 'Un surplus de paiement doit être signalé.');
+accounting_test_same(
+    'Vente livrée & encaissée · HOR-260901-625277',
+    accounting_journal_display_label([
+        'group_type' => 'delivery',
+        'nature' => 'receipt',
+        'order_ref' => 'HOR-260901-625277',
+        'label' => 'Livraison HOR-260901-625277',
+    ]),
+    'Une vente livrée doit être nommée explicitement dans le Journal.'
+);
+accounting_test_same(
+    'Publicité Meta · Azur Squelette',
+    accounting_journal_display_label([
+        'group_type' => 'manual',
+        'nature' => 'disbursement',
+        'label' => 'Publicité Meta · Azur Squelette',
+    ]),
+    'Les autres libellés du Journal restent inchangés.'
+);
 
 $deliveryLines = [
     ['id' => 11, 'quantity' => 1, 'unit_price_fcfa' => 52000],

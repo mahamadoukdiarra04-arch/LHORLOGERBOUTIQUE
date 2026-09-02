@@ -216,7 +216,7 @@ function accounting_confirm_delivery(PDO $pdo, int $orderId, array $data, ?int $
                 'source_type' => 'order',
                 'amount_fcfa' => $payment['amount_fcfa'],
                 'effective_at' => $effectiveAt,
-                'label' => 'Livraison ' . $orderRef,
+                'label' => 'Vente livrée & encaissée · ' . $orderRef,
                 'counterparty' => trim($lines[0]['customer_first_name'] . ' ' . $lines[0]['customer_last_name']),
                 'payment_reference' => $payment['payment_reference'],
                 'note' => $exceptionMode && $paid < $total ? $exceptionReason : null,
