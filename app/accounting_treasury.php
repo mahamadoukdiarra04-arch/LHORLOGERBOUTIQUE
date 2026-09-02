@@ -83,7 +83,9 @@ function accounting_create_disbursement(PDO $pdo, array $data, ?int $userId = nu
         $categoryId = accounting_integer($data['category_id'] ?? null, 'La catégorie', 1);
         $category = accounting_require_active_category($pdo, $categoryId, true);
         if (!in_array($category['direction'], ['disbursement', 'both'], true)) throw new RuntimeException('Cette catégorie ne peut pas être utilisée pour un décaissement.');
-        $productId = array_key_exists('product_id', $data) && $data['product_id'] !== '' ? accounting_integer($data['product_id'], 'Le produit', 1) : null;
+        $productId = array_key_exists('product_id', $data) && $data['product_id'] !== '' && $data['product_id'] !== null
+            ? accounting_integer($data['product_id'], 'Le produit', 1)
+            : null;
         if (!accounting_allocation_scope_is_valid($category, $scope, $productId)) {
             throw new RuntimeException('La portée et le produit ne correspondent pas à la catégorie choisie.');
         }

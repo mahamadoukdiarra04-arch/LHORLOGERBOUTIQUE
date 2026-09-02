@@ -161,13 +161,19 @@ function accounting_replace_draft_allocations(PDO $pdo, int $operationId, array 
                 throw new RuntimeException('Chaque ventilation doit utiliser la catégorie de l’opération.');
             }
             $scope = (string) ($entry['scope'] ?? $category['default_scope']);
-            $productId = array_key_exists('product_id', $entry) && $entry['product_id'] !== '' ? accounting_integer($entry['product_id'], 'Le produit', 1) : null;
+            $productId = array_key_exists('product_id', $entry) && $entry['product_id'] !== '' && $entry['product_id'] !== null
+                ? accounting_integer($entry['product_id'], 'Le produit', 1)
+                : null;
             if (!accounting_allocation_scope_is_valid($category, $scope, $productId)) {
                 throw new RuntimeException('La portée de cette ventilation ne correspond pas à sa catégorie.');
             }
             accounting_assert_product_exists($pdo, $productId);
-            $orderId = array_key_exists('order_id', $entry) && $entry['order_id'] !== '' ? accounting_integer($entry['order_id'], 'La ligne de commande', 1) : null;
-            $directSaleItemId = array_key_exists('direct_sale_item_id', $entry) && $entry['direct_sale_item_id'] !== '' ? accounting_integer($entry['direct_sale_item_id'], 'La ligne de vente directe', 1) : null;
+            $orderId = array_key_exists('order_id', $entry) && $entry['order_id'] !== '' && $entry['order_id'] !== null
+                ? accounting_integer($entry['order_id'], 'La ligne de commande', 1)
+                : null;
+            $directSaleItemId = array_key_exists('direct_sale_item_id', $entry) && $entry['direct_sale_item_id'] !== '' && $entry['direct_sale_item_id'] !== null
+                ? accounting_integer($entry['direct_sale_item_id'], 'La ligne de vente directe', 1)
+                : null;
             accounting_assert_source_line_exists($pdo, $orderId, $directSaleItemId);
             $amount = accounting_integer($entry['amount_fcfa'] ?? null, 'Le montant ventilé', 1);
             if ($amount > PHP_INT_MAX - $total) throw new RuntimeException('Le total des ventilations est trop élevé.');
