@@ -113,9 +113,9 @@ $deliveryExpenseCategory = array_values(array_filter(
     static fn (array $category): bool => $category[0] === 'delivery_cost',
 ));
 accounting_test_same(
-    [['delivery_cost', 'Livraison', 'disbursement', 'direct_expense', 'product', 65]],
+    [['delivery_cost', 'Livraison', 'disbursement', 'common_expense', 'shop', 65]],
     $deliveryExpenseCategory,
-    'La livraison doit rester une charge directe affectable à un produit.'
+    'La livraison doit rester une charge commune portée par la boutique.'
 );
 accounting_test_throws(static fn () => accounting_normalize_direct_sale_items([[
     'product_id' => '1', 'variant_id' => '7', 'quantity' => '1', 'unit_price_fcfa' => '1000', 'discount_fcfa' => '1000',
