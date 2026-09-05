@@ -53,6 +53,13 @@ function closer_relative_time(string $value): string {
         return 'date indisponible';
     }
 }
+function closer_order_time(string $value): string {
+    try {
+        return (new DateTimeImmutable($value, accounting_bamako_timezone()))->format('d/m/Y · H:i');
+    } catch (Throwable) {
+        return 'Heure indisponible';
+    }
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
@@ -136,6 +143,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $catalog = catalog();
+$closerStock = [];
+try {
+    $stockStatement = $pdo->query(
+        "SELECT p.id AS product_id, p.slug, p.name AS product_name,
+                pv.id AS variant_id, pv.name AS variant_name,
+                COALESCE(SUM(sm.quantity), 0) AS quantity
+         FROM product_variants pv
+         JOIN products p ON p.id = pv.product_id
+         LEFT JOIN stock_movements sm ON sm.variant_id = pv.id
+         WHERE pv.is_active = 1
+         GROUP BY p.id, p.slug, p.name, pv.id, pv.name
+         ORDER BY p.id ASC, pv.name ASC"
+    );
+    $closerStock = $stockStatement->fetchAll();
+} catch (Throwable $exception) {
+    error_log('L’Horloger: aperçu stock closeuse indisponible.');
+}
+$closerStockTotal = array_reduce(
+    $closerStock,
+    static fn(int $total, array $variant): int => $total + max(0, (int) $variant['quantity']),
+    0
+);
 $courierWhatsapp = trim((string) app_setting('courier_whatsapp', ''));
 $courierReady = preg_match('/^\d{8,15}$/', preg_replace('/\D+/', '', $courierWhatsapp)) === 1;
 $newSearch = trim((string) ($_GET['new_q'] ?? ''));
@@ -219,8 +248,27 @@ require APP_ROOT . '/templates/closer-header.php';
   <article class="closer-metric"><span>À rappeler</span><strong><?= $followUpCount ?></strong></article>
   <article class="closer-metric"><span>Confirmées aujourd’hui</span><strong><?= $confirmedToday ?></strong></article>
 </section>
+<section class="closer-stock" aria-labelledby="closer-stock-title">
+  <div class="closer-stock__head">
+    <div><p class="closer-kicker">Repère visuel</p><h2 id="closer-stock-title">Stock disponible</h2><p>Chaque photo correspond au coloris exact. Faites glisser pour voir toutes les montres.</p></div>
+    <span class="closer-count"><?= $closerStockTotal ?> montre<?= $closerStockTotal === 1 ? '' : 's' ?></span>
+  </div>
+  <?php if ($closerStock): ?>
+    <div class="closer-stock__rail" aria-label="Quantités disponibles par coloris" tabindex="0">
+      <?php foreach ($closerStock as $variant): $available = max(0, (int) $variant['quantity']); ?>
+        <article class="closer-stock-card <?= $available === 0 ? 'is-empty' : '' ?>">
+          <img src="<?= e(url('/' . catalog_variant_image($catalog, (string) $variant['slug'], (string) $variant['variant_name']))) ?>" alt="<?= e($variant['product_name'] . ' · ' . $variant['variant_name']) ?>">
+          <div class="closer-stock-card__copy"><span><?= e($variant['product_name']) ?></span><strong><?= e($variant['variant_name']) ?></strong></div>
+          <div class="closer-stock-card__quantity"><b><?= $available ?></b><span>disponible<?= $available === 1 ? '' : 's' ?></span></div>
+        </article>
+      <?php endforeach; ?>
+    </div>
+  <?php else: ?>
+    <p class="closer-empty">Le stock est momentanément indisponible.</p>
+  <?php endif; ?>
+</section>
 <div class="closer-layout">
-  <section class="closer-panel">
+  <section class="closer-panel closer-panel--followup">
     <div class="closer-panel__head"><div><h2>Mon suivi</h2><p>Chaque validation met immédiatement à jour l’état et le canal dans l’administration.</p></div></div>
     <form id="delivery-selection" class="closer-delivery" method="post" action="<?= e(url('/closer/delivery-sheet.php')) ?>">
       <?= csrf_field() ?>
@@ -234,7 +282,7 @@ require APP_ROOT . '/templates/closer-header.php';
         <article class="closer-order">
           <img class="closer-order__image" src="<?= e(url('/' . closer_image($order, $catalog))) ?>" alt="<?= e($order['product_name'] . ' · ' . $order['variant']) ?>">
           <div class="closer-order__content">
-            <div class="closer-order__top"><div><h3><?= e($order['customer_first_name'] . ' ' . $order['customer_last_name']) ?></h3><p><?= e($order['order_ref']) ?> · <?= e($order['product_name']) ?></p></div><span class="closer-pill <?= $confirmed ? 'is-confirmed' : ($isFollowUp ? 'is-followup' : '') ?>"><?= e($order['follow_up_status']) ?></span></div>
+            <div class="closer-order__top"><div><h3><?= e($order['customer_first_name'] . ' ' . $order['customer_last_name']) ?></h3><p><?= e($order['order_ref']) ?> · <?= e($order['product_name']) ?></p><time class="closer-order-time" datetime="<?= e((string) $order['created_at']) ?>">Commandée le <?= e(closer_order_time((string) $order['created_at'])) ?></time></div><span class="closer-pill <?= $confirmed ? 'is-confirmed' : ($isFollowUp ? 'is-followup' : '') ?>"><?= e($order['follow_up_status']) ?></span></div>
             <div class="closer-order__facts"><span><b><?= e($order['variant']) ?></b> · Qté <?= (int) $order['quantity'] ?></span><span><a href="tel:<?= e($order['phone']) ?>"><b><?= e($order['phone']) ?></b></a></span><span><?= e($order['district']) ?></span><span><b><?= money((int) $order['quantity'] * (int) $order['unit_price_fcfa']) ?></b></span></div>
             <?php if ($confirmed): ?><label class="closer-choice"><input form="delivery-selection" type="checkbox" name="order_ids[]" value="<?= (int) $order['id'] ?>"> Ajouter au PDF du livreur</label><?php endif; ?>
             <form class="closer-form" method="post">
@@ -258,18 +306,20 @@ require APP_ROOT . '/templates/closer-header.php';
       <?php if (!$myOrders): ?><p class="closer-empty">Votre suivi est vide. Ajoutez une nouvelle commande ci-dessous pour commencer.</p><?php endif; ?>
     </div>
   </section>
-  <aside class="closer-panel">
+  <div class="closer-side">
+  <aside class="closer-panel closer-panel--queue">
     <div class="closer-panel__head"><div><h2>Nouvelles commandes</h2><p>Priorité aux commandes les plus anciennes. Prenez-les une par une pour garder votre suivi net.</p></div><span class="closer-count"><?= $newOrdersTotal ?> en attente</span></div>
     <form class="closer-queue-tools" method="get" role="search"><label for="new-order-search">Rechercher une commande</label><div><input id="new-order-search" name="new_q" value="<?= e($newSearch) ?>" maxlength="80" placeholder="Client, téléphone, quartier…"><button class="closer-button secondary" type="submit">Filtrer</button></div></form>
     <p class="closer-queue-summary"><?= $newOrdersTotal === 0 ? 'Aucune commande ne correspond.' : 'Commandes ' . (($newOffset + 1)) . ' à ' . min($newOffset + $newPerPage, $newOrdersTotal) . ' sur ' . $newOrdersTotal ?></p>
     <div class="closer-orders closer-queue">
       <?php foreach ($newOrders as $order): ?>
-        <article class="closer-order closer-order--queue"><img class="closer-order__image" src="<?= e(url('/' . closer_image($order, $catalog))) ?>" alt="<?= e($order['product_name'] . ' · ' . $order['variant']) ?>"><div class="closer-order__content"><div class="closer-order__top"><div><h3><?= e($order['customer_first_name'] . ' ' . $order['customer_last_name']) ?></h3><p><?= e($order['product_name']) ?> · <?= e($order['variant']) ?></p></div><span class="closer-age"><?= e(closer_relative_time((string) $order['created_at'])) ?></span></div><div class="closer-order__facts"><span><a href="tel:<?= e($order['phone']) ?>"><b><?= e($order['phone']) ?></b></a></span><span><?= e($order['district']) ?></span><span>Qté <?= (int) $order['quantity'] ?></span></div><form method="post"><?= csrf_field() ?><input type="hidden" name="action" value="claim"><input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>"><button class="closer-button" type="submit">Prendre en charge</button></form></div></article>
+        <article class="closer-order closer-order--queue"><img class="closer-order__image" src="<?= e(url('/' . closer_image($order, $catalog))) ?>" alt="<?= e($order['product_name'] . ' · ' . $order['variant']) ?>"><div class="closer-order__content"><div class="closer-order__top"><div><h3><?= e($order['customer_first_name'] . ' ' . $order['customer_last_name']) ?></h3><p><?= e($order['product_name']) ?> · <?= e($order['variant']) ?></p></div><span class="closer-age"><time datetime="<?= e((string) $order['created_at']) ?>"><?= e(closer_order_time((string) $order['created_at'])) ?></time><small><?= e(closer_relative_time((string) $order['created_at'])) ?></small></span></div><div class="closer-order__facts"><span><a href="tel:<?= e($order['phone']) ?>"><b><?= e($order['phone']) ?></b></a></span><span><?= e($order['district']) ?></span><span>Qté <?= (int) $order['quantity'] ?></span></div><form method="post"><?= csrf_field() ?><input type="hidden" name="action" value="claim"><input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>"><button class="closer-button" type="submit">Prendre en charge</button></form></div></article>
       <?php endforeach; ?>
       <?php if (!$newOrders): ?><p class="closer-empty">Aucune nouvelle commande à appeler pour le moment.</p><?php endif; ?>
     </div>
     <?php if ($newPages > 1): ?><nav class="closer-pagination" aria-label="Pages des nouvelles commandes"><?php if ($newPage > 1): ?><a href="?<?= e(http_build_query(['new_q' => $newSearch, 'new_page' => $newPage - 1])) ?>">← Précédentes</a><?php endif; ?><span>Page <?= $newPage ?> / <?= $newPages ?></span><?php if ($newPage < $newPages): ?><a href="?<?= e(http_build_query(['new_q' => $newSearch, 'new_page' => $newPage + 1])) ?>">Suivantes →</a><?php endif; ?></nav><?php endif; ?>
-    <div style="margin-top:22px"><div class="closer-panel__head"><div><h2>Mon historique</h2><p>Vos dernières actions.</p></div></div><ul class="closer-history"><?php foreach ($history as $event): ?><li><strong><?= e($event['event_type']) ?> · <?= e($event['order_ref']) ?></strong><span><?= e($event['customer_first_name'] . ' ' . $event['customer_last_name']) ?> · <?= e(date('d/m/Y H:i', strtotime($event['created_at']))) ?><?= $event['note'] ? ' · ' . e($event['note']) : '' ?></span></li><?php endforeach; ?><?php if (!$history): ?><li><span>Aucune action enregistrée.</span></li><?php endif; ?></ul></div>
   </aside>
+  <aside class="closer-panel closer-panel--history"><div class="closer-panel__head"><div><h2>Mon historique</h2><p>Vos dernières actions.</p></div></div><ul class="closer-history"><?php foreach ($history as $event): ?><li><strong><?= e($event['event_type']) ?> · <?= e($event['order_ref']) ?></strong><span><?= e($event['customer_first_name'] . ' ' . $event['customer_last_name']) ?> · <?= e(date('d/m/Y H:i', strtotime($event['created_at']))) ?><?= $event['note'] ? ' · ' . e($event['note']) : '' ?></span></li><?php endforeach; ?><?php if (!$history): ?><li><span>Aucune action enregistrée.</span></li><?php endif; ?></ul></aside>
+  </div>
 </div>
 <?php require APP_ROOT . '/templates/closer-footer.php'; ?>
