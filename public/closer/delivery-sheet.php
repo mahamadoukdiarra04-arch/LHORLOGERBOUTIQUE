@@ -64,7 +64,7 @@ $orders = array_map(static function (array $row) use ($catalog): array {
         'variant' => $row['variant'],
         'quantity' => (int) $row['quantity'],
         'amount' => money((int) $row['quantity'] * (int) $row['unit_price_fcfa']),
-        'image' => $catalog[$slug]['variants'][$row['variant']] ?? $catalog[$slug]['image'] ?? 'products/nocturne-chrono.jpg',
+        'image' => catalog_variant_image($catalog, $slug, (string) $row['variant']),
     ];
 }, $rows);
 $pdf = delivery_sheet_pdf($orders, $date, dirname(APP_ROOT) . '/public');

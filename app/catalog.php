@@ -50,3 +50,40 @@ function catalog(): array {
     return $products;
 }
 function product_by_slug(string $slug): ?array { $all = catalog(); return $all[$slug] ?? null; }
+
+/**
+ * Return the photo that represents the color actually selected on an order.
+ *
+ * Older orders may contain harmless differences in spacing or punctuation, so
+ * the normalized lookup prevents them from falling back to the generic model
+ * photo when the corresponding variant still exists in the catalogue.
+ */
+function catalog_variant_image(array $catalog, string $slug, ?string $variant): string {
+    $product = $catalog[$slug] ?? null;
+    $fallback = is_array($product) && !empty($product['image'])
+        ? (string) $product['image']
+        : 'products/nocturne-chrono.jpg';
+    if (!is_array($product)) return $fallback;
+
+    $variant = trim((string) $variant);
+    $variants = (array) ($product['variants'] ?? []);
+    if ($variant !== '' && isset($variants[$variant]) && trim((string) $variants[$variant]) !== '') {
+        return (string) $variants[$variant];
+    }
+
+    $normalize = static function (string $value): string {
+        $value = mb_strtolower(trim($value), 'UTF-8');
+        $value = str_replace([' et ', ' / ', ' - '], ' ', $value);
+        return preg_replace('/[^\p{L}\p{N}]+/u', '', $value) ?? '';
+    };
+    $needle = $normalize($variant);
+    if ($needle !== '') {
+        foreach ($variants as $name => $image) {
+            if ($normalize((string) $name) === $needle && trim((string) $image) !== '') {
+                return (string) $image;
+            }
+        }
+    }
+
+    return $fallback;
+}

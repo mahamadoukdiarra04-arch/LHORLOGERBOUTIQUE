@@ -21,8 +21,11 @@ function closer_datetime(?string $value): ?string {
     return $date ? $date->format('Y-m-d H:i:s') : null;
 }
 function closer_image(array $order, array $catalog): string {
-    $slug = (string) ($order['slug'] ?? '');
-    return $catalog[$slug]['image'] ?? 'products/nocturne-chrono.jpg';
+    return catalog_variant_image(
+        $catalog,
+        (string) ($order['slug'] ?? ''),
+        (string) ($order['variant'] ?? '')
+    );
 }
 function closer_whatsapp_link(array $order, string $number): string {
     $phone = preg_replace('/\D+/', '', $number);
@@ -229,7 +232,7 @@ require APP_ROOT . '/templates/closer-header.php';
     <div class="closer-orders">
       <?php foreach ($myOrders as $order): $confirmed = $order['follow_up_status'] === 'Confirmée'; $isFollowUp = $order['follow_up_status'] === 'À rappeler'; ?>
         <article class="closer-order">
-          <img class="closer-order__image" src="<?= e(url('/' . closer_image($order, $catalog))) ?>" alt="<?= e($order['product_name']) ?>">
+          <img class="closer-order__image" src="<?= e(url('/' . closer_image($order, $catalog))) ?>" alt="<?= e($order['product_name'] . ' · ' . $order['variant']) ?>">
           <div class="closer-order__content">
             <div class="closer-order__top"><div><h3><?= e($order['customer_first_name'] . ' ' . $order['customer_last_name']) ?></h3><p><?= e($order['order_ref']) ?> · <?= e($order['product_name']) ?></p></div><span class="closer-pill <?= $confirmed ? 'is-confirmed' : ($isFollowUp ? 'is-followup' : '') ?>"><?= e($order['follow_up_status']) ?></span></div>
             <div class="closer-order__facts"><span><b><?= e($order['variant']) ?></b> · Qté <?= (int) $order['quantity'] ?></span><span><a href="tel:<?= e($order['phone']) ?>"><b><?= e($order['phone']) ?></b></a></span><span><?= e($order['district']) ?></span><span><b><?= money((int) $order['quantity'] * (int) $order['unit_price_fcfa']) ?></b></span></div>
@@ -261,7 +264,7 @@ require APP_ROOT . '/templates/closer-header.php';
     <p class="closer-queue-summary"><?= $newOrdersTotal === 0 ? 'Aucune commande ne correspond.' : 'Commandes ' . (($newOffset + 1)) . ' à ' . min($newOffset + $newPerPage, $newOrdersTotal) . ' sur ' . $newOrdersTotal ?></p>
     <div class="closer-orders closer-queue">
       <?php foreach ($newOrders as $order): ?>
-        <article class="closer-order closer-order--queue"><img class="closer-order__image" src="<?= e(url('/' . closer_image($order, $catalog))) ?>" alt="<?= e($order['product_name']) ?>"><div class="closer-order__content"><div class="closer-order__top"><div><h3><?= e($order['customer_first_name'] . ' ' . $order['customer_last_name']) ?></h3><p><?= e($order['product_name']) ?> · <?= e($order['variant']) ?></p></div><span class="closer-age"><?= e(closer_relative_time((string) $order['created_at'])) ?></span></div><div class="closer-order__facts"><span><a href="tel:<?= e($order['phone']) ?>"><b><?= e($order['phone']) ?></b></a></span><span><?= e($order['district']) ?></span><span>Qté <?= (int) $order['quantity'] ?></span></div><form method="post"><?= csrf_field() ?><input type="hidden" name="action" value="claim"><input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>"><button class="closer-button" type="submit">Prendre en charge</button></form></div></article>
+        <article class="closer-order closer-order--queue"><img class="closer-order__image" src="<?= e(url('/' . closer_image($order, $catalog))) ?>" alt="<?= e($order['product_name'] . ' · ' . $order['variant']) ?>"><div class="closer-order__content"><div class="closer-order__top"><div><h3><?= e($order['customer_first_name'] . ' ' . $order['customer_last_name']) ?></h3><p><?= e($order['product_name']) ?> · <?= e($order['variant']) ?></p></div><span class="closer-age"><?= e(closer_relative_time((string) $order['created_at'])) ?></span></div><div class="closer-order__facts"><span><a href="tel:<?= e($order['phone']) ?>"><b><?= e($order['phone']) ?></b></a></span><span><?= e($order['district']) ?></span><span>Qté <?= (int) $order['quantity'] ?></span></div><form method="post"><?= csrf_field() ?><input type="hidden" name="action" value="claim"><input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>"><button class="closer-button" type="submit">Prendre en charge</button></form></div></article>
       <?php endforeach; ?>
       <?php if (!$newOrders): ?><p class="closer-empty">Aucune nouvelle commande à appeler pour le moment.</p><?php endif; ?>
     </div>

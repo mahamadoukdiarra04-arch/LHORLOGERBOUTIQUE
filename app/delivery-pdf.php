@@ -3,7 +3,8 @@ declare(strict_types=1);
 
 /**
  * Minimal, dependency-free PDF renderer for delivery sheets.
- * It embeds the original JPEG product photos so the courier can identify each model at a glance.
+ * It embeds the original JPEG variant photos so the courier can identify the
+ * exact model and color at a glance.
  */
 final class DeliveryPdf {
     private array $pages = [];
@@ -177,6 +178,9 @@ function delivery_sheet_pdf(array $orders, string $date, string $publicRoot): st
         $pdf->rect(46, $bottom + 14, 100, 122);
         $imagePath = rtrim($publicRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . ltrim((string) ($order['image'] ?? ''), '/\\');
         $pdf->imageJpeg($imagePath, 48, $bottom + 16, 96, 118);
+        $pdf->fill(0.05, 0.12, 0.22);
+        $pdf->rect(48, $bottom + 16, 96, 17);
+        $pdf->text(53, $bottom + 21, 7.2, delivery_pdf_crop((string) $order['variant'], 21), [1, 1, 1]);
 
         $pdf->text(161, $top - 22, 12, delivery_pdf_crop((string) $order['customer'], 38), [0.05, 0.12, 0.22]);
         $pdf->text(161, $top - 40, 8.5, 'RÉF. ' . delivery_pdf_crop((string) $order['order_ref'], 30), [0.35, 0.43, 0.53]);
