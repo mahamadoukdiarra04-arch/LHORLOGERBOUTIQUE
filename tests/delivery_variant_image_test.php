@@ -22,9 +22,32 @@ delivery_test_assert(
     'L’Azur Noir squelette doit utiliser sa photo exacte.'
 );
 delivery_test_assert(
-    catalog_variant_image($catalog, 'azur-squelette', 'Coloris inconnu') === 'products/azur-squelette.jpg',
+    catalog_variant_image($catalog, 'azur-squelette', 'Coloris inconnu') === 'products/azur-bleu-signature-lifestyle.webp',
     'Un coloris inconnu doit conserver un repli sûr sur le modèle.'
 );
+delivery_test_assert(
+    catalog_variant_image($catalog, 'azur-squelette', 'Bleu signature') === 'products/azur-bleu-signature-lifestyle.webp',
+    'L’Azur Bleu signature doit utiliser la nouvelle photo Bleu & or.'
+);
+delivery_test_assert(
+    ($catalog['azur-squelette']['gallery'][0] ?? '') === 'products/azur-bleu-signature-lifestyle.webp',
+    'La galerie Azur doit s’ouvrir sur Bleu signature.'
+);
+delivery_test_assert(
+    !in_array('products/azur-squelette.jpg', $catalog['azur-squelette']['gallery'] ?? [], true)
+        && !in_array('products/azur-squelette-angle.jpg', $catalog['azur-squelette']['gallery'] ?? [], true),
+    'Les anciennes vues argentées ne doivent plus apparaître dans la galerie Azur.'
+);
+delivery_test_assert(
+    count($catalog['azur-squelette']['gallery'] ?? []) === 6,
+    'La galerie Bleu signature doit contenir les quatre nouveaux visuels et deux visuels existants.'
+);
+foreach ($catalog['azur-squelette']['gallery'] as $imagePath) {
+    delivery_test_assert(
+        is_file(__DIR__ . '/../public/' . $imagePath),
+        'Chaque visuel de la galerie Azur doit exister : ' . $imagePath
+    );
+}
 
 $orders = [
     [
