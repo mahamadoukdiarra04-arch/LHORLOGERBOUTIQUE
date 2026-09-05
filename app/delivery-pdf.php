@@ -65,8 +65,14 @@ final class DeliveryPdf {
                 'color' => $channels === 4 ? '/DeviceCMYK' : '/DeviceRGB',
             ];
         }
-        $name = $this->images[$key]['name'];
-        $this->write(sprintf("q %.2F 0 0 %.2F %.2F %.2F cm /%s Do Q\n", $width, $height, $x, $y, $name));
+        $image = $this->images[$key];
+        $name = $image['name'];
+        $scale = min($width / $image['width'], $height / $image['height']);
+        $drawWidth = $image['width'] * $scale;
+        $drawHeight = $image['height'] * $scale;
+        $drawX = $x + (($width - $drawWidth) / 2);
+        $drawY = $y + (($height - $drawHeight) / 2);
+        $this->write(sprintf("q %.2F 0 0 %.2F %.2F %.2F cm /%s Do Q\n", $drawWidth, $drawHeight, $drawX, $drawY, $name));
     }
 
     public function output(): string {
