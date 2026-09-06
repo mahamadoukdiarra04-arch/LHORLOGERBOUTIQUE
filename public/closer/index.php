@@ -27,16 +27,21 @@ function closer_image(array $order, array $catalog): string {
         (string) ($order['variant'] ?? '')
     );
 }
-function closer_whatsapp_link(array $order, string $number): string {
-    $phone = preg_replace('/\D+/', '', $number);
-    $message = "L’Horloger - livraison à préparer\n"
+function closer_whatsapp_message(array $order): string {
+    $amount = money((int) $order['quantity'] * (int) $order['unit_price_fcfa']);
+    return "L’HORLOGER · LIVRAISON\n"
         . "Référence : {$order['order_ref']}\n"
         . "Client : {$order['customer_first_name']} {$order['customer_last_name']}\n"
         . "Téléphone : {$order['phone']}\n"
         . "Quartier : {$order['district']}\n"
-        . "Montre : {$order['product_name']} - {$order['variant']} x{$order['quantity']}\n"
-        . "Total à la réception : " . money((int) $order['quantity'] * (int) $order['unit_price_fcfa']);
-    return 'https://wa.me/' . rawurlencode($phone) . '?text=' . rawurlencode($message);
+        . "Montre : {$order['product_name']}\n"
+        . "Couleur : {$order['variant']}\n"
+        . "Quantité : {$order['quantity']}\n\n"
+        . "*PRIX À ENCAISSER : {$amount}*";
+}
+function closer_whatsapp_link(array $order, string $number): string {
+    $phone = preg_replace('/\D+/', '', $number);
+    return 'https://wa.me/' . rawurlencode($phone) . '?text=' . rawurlencode(closer_whatsapp_message($order));
 }
 function closer_relative_time(string $value): string {
     try {
@@ -92,23 +97,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('success', 'Commande ajoutée à votre suivi.');
         } elseif (!$tracking || $tracking['closer_identity'] !== $closer) {
             throw new RuntimeException('Ajoutez d’abord cette commande à votre suivi.');
-        } elseif ($action === 'add_to_delivery') {
-            if ($tracking['follow_up_status'] !== 'Confirmée' || $order['status'] !== 'Confirmée') {
-                throw new RuntimeException('Confirmez la commande avant de l’ajouter au bordereau.');
-            }
-            $batch = closer_delivery_draft($pdo, $closer, true);
-            $addToBatch = $pdo->prepare(
-                'INSERT IGNORE INTO closer_delivery_batch_orders (batch_id, order_id) VALUES (?, ?)'
-            );
-            $addToBatch->execute([(int) $batch['id'], $orderId]);
-            if ($addToBatch->rowCount() < 1) {
-                throw new RuntimeException('Cette commande est déjà ajoutée au bordereau en cours ou à un bordereau téléchargé.');
-            }
-            log_closer_event($orderId, 'Ajout au bordereau', 'Commande ajoutée au bordereau PDF en cours.');
-            $pdo->commit();
-            flash('success', 'Commande ajoutée au bordereau en cours.');
         } elseif ($action === 'update_follow_up') {
-            if (in_array($order['status'], ['Annulée', 'Livrée'], true)) {
+            if (in_array($order['status'], ['Annulée', 'En livraison', 'Livrée'], true)) {
                 throw new RuntimeException('Cette commande est déjà ' . strtolower((string) $order['status']) . ' et a été retirée de votre suivi actif.');
             }
             $state = (string) ($_POST['follow_up_status'] ?? '');
@@ -155,6 +145,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             log_closer_event($orderId, 'WhatsApp préparé', 'Message livreur prêt à être envoyé.');
             $pdo->commit();
             flash('success', 'Message WhatsApp préparé pour le livreur.');
+        } elseif ($action === 'mark_whatsapp_sent') {
+            if ($tracking['follow_up_status'] !== 'Confirmée' || $order['status'] !== 'Confirmée') {
+                throw new RuntimeException('Cette commande n’est plus disponible pour l’envoi au livreur.');
+            }
+            if (!$tracking['whatsapp_prepared_at']) {
+                throw new RuntimeException('Préparez d’abord le message du livreur.');
+            }
+            $markInDelivery = $pdo->prepare(
+                "UPDATE orders SET status = 'En livraison' WHERE order_ref = ? AND status = 'Confirmée'"
+            );
+            $markInDelivery->execute([$order['order_ref']]);
+            if ($markInDelivery->rowCount() < 1) {
+                throw new RuntimeException('La commande n’a pas pu passer en livraison. Rechargez la page.');
+            }
+            $markSent = $pdo->prepare(
+                "UPDATE order_closer_tracking t
+                 JOIN orders o ON o.id = t.order_id
+                 SET t.whatsapp_sent_at = NOW(), t.follow_up_at = NULL
+                 WHERE o.order_ref = ? AND t.closer_identity = ?"
+            );
+            $markSent->execute([$order['order_ref'], $closer]);
+            log_closer_event($orderId, 'Message livreur envoyé', 'Commande passée en livraison après le partage du message illustré.');
+            log_event('commande', 'Commande ' . $order['order_ref'] . ' passée en livraison par ' . $closer, (int) $order['product_id'], $orderId);
+            sync_closer_tracking_for_order_ref($pdo, (string) $order['order_ref']);
+            $pdo->commit();
+            flash('success', 'Message envoyé : la commande est maintenant en livraison.');
         } else {
             throw new RuntimeException('Action inconnue.');
         }
@@ -191,10 +207,6 @@ $closerStockTotal = array_reduce(
 );
 $courierWhatsapp = trim((string) app_setting('courier_whatsapp', ''));
 $courierReady = preg_match('/^\d{8,15}$/', preg_replace('/\D+/', '', $courierWhatsapp)) === 1;
-$deliveryBatch = closer_delivery_draft($pdo, $closer);
-$deliveryOrderIds = closer_delivery_order_ids($pdo, (int) $deliveryBatch['id']);
-$deliveryOrderLookup = array_fill_keys($deliveryOrderIds, true);
-$deliveryOrderCount = count($deliveryOrderIds);
 $newSearch = trim((string) ($_GET['new_q'] ?? ''));
 if (mb_strlen($newSearch) > 80) $newSearch = mb_substr($newSearch, 0, 80);
 $newPage = filter_var($_GET['new_page'] ?? 1, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 1;
@@ -228,23 +240,15 @@ $newOrdersStatement = $pdo->prepare(
 $newOrdersStatement->execute($newParams);
 $newOrders = $newOrdersStatement->fetchAll();
 $myOrdersStatement = $pdo->prepare(
-    "SELECT o.*, p.slug, t.follow_up_status, t.follow_up_at, t.note, t.whatsapp_prepared_at, t.updated_at AS tracking_updated_at
+    "SELECT o.*, p.slug, t.follow_up_status, t.follow_up_at, t.note, t.whatsapp_prepared_at, t.whatsapp_sent_at, t.updated_at AS tracking_updated_at
      FROM order_closer_tracking t
      JOIN orders o ON o.id = t.order_id
      JOIN products p ON p.id = o.product_id
      WHERE t.closer_identity = ?
-       AND o.status NOT IN ('Annulée', 'Livrée')
-       AND NOT EXISTS (
-           SELECT 1
-           FROM closer_delivery_batch_orders completed_item
-           JOIN closer_delivery_batches completed_batch ON completed_batch.id = completed_item.batch_id
-           WHERE completed_item.order_id = o.id
-             AND completed_batch.closer_identity = t.closer_identity
-             AND completed_batch.status = 'downloaded'
-       )
+       AND o.status NOT IN ('Annulée', 'En livraison', 'Livrée')
        AND (
            t.follow_up_status IN ('À appeler', 'À rappeler')
-           OR (t.follow_up_status = 'Confirmée' AND (t.whatsapp_prepared_at IS NULL OR DATE(t.updated_at) = CURDATE()))
+           OR t.follow_up_status = 'Confirmée'
        )
      ORDER BY FIELD(t.follow_up_status, 'À appeler', 'À rappeler', 'Confirmée', 'Annulée'),
               t.follow_up_at IS NULL, t.follow_up_at, t.updated_at DESC"
@@ -268,7 +272,7 @@ $followUpCountStatement = $pdo->prepare(
      JOIN orders o ON o.id = t.order_id
      WHERE t.closer_identity = ?
        AND t.follow_up_status = 'À rappeler'
-       AND o.status NOT IN ('Annulée', 'Livrée')"
+       AND o.status NOT IN ('Annulée', 'En livraison', 'Livrée')"
 );
 $followUpCountStatement->execute([$closer]);
 $followUpCount = (int) $followUpCountStatement->fetchColumn();
@@ -276,7 +280,7 @@ $closerPageTitle = 'Mon suivi';
 require APP_ROOT . '/templates/closer-header.php';
 ?>
 <header class="closer-hero">
-  <div><p class="closer-kicker">Espace closeuse</p><h1>Mes ventes à confirmer.</h1><p>Appelez, notez le résultat puis préparez les commandes validées pour le livreur.</p></div>
+  <div><p class="closer-kicker">Espace closeuse</p><h1>Mes ventes à confirmer.</h1><p>Appelez, notez le résultat puis partagez au livreur la fiche illustrée de chaque commande validée.</p></div>
 </header>
 <section class="closer-metrics">
   <article class="closer-metric"><span>Nouvelles à traiter</span><strong><?= $newOrdersTotal ?></strong></article>
@@ -305,38 +309,15 @@ require APP_ROOT . '/templates/closer-header.php';
 </section>
 <div class="closer-layout">
   <section class="closer-panel closer-panel--followup">
-    <div class="closer-panel__head"><div><h2>Mon suivi</h2><p>Chaque validation met immédiatement à jour l’état et le canal dans l’administration.</p></div></div>
-    <form id="delivery-selection" class="closer-delivery" method="post" action="<?= e(url('/closer/delivery-sheet.php')) ?>" target="_blank" data-delivery-download>
-      <?= csrf_field() ?>
-      <input type="hidden" name="batch_id" value="<?= (int) $deliveryBatch['id'] ?>">
-      <p><strong>Bordereau en cours</strong><br><?= $deliveryOrderCount === 0 ? 'Aucune commande ajoutée.' : $deliveryOrderCount . ' commande' . ($deliveryOrderCount > 1 ? 's' : '') . ' prête' . ($deliveryOrderCount > 1 ? 's' : '') . ' à télécharger.' ?></p>
-      <input class="closer-delivery-date" type="date" name="delivery_date" value="<?= e($today) ?>" aria-label="Date du bordereau">
-      <button class="closer-button" type="submit" <?= $deliveryOrderCount === 0 ? 'disabled' : '' ?>>Télécharger le bordereau<?= $deliveryOrderCount > 0 ? ' (' . $deliveryOrderCount . ')' : '' ?></button>
-    </form>
+    <div class="closer-panel__head"><div><h2>Mon suivi</h2><p>Confirmez la commande, préparez son message illustré puis partagez-le au livreur. Après l’envoi, elle passe automatiquement en livraison et quitte cette liste.</p></div></div>
     <?php if (!$courierReady): ?><p class="closer-warning">Le numéro WhatsApp du livreur n’est pas encore renseigné. La gestion peut l’ajouter dans « Suivi closeuse ».</p><?php endif; ?>
     <div class="closer-orders">
-      <?php foreach ($myOrders as $order): $confirmed = $order['follow_up_status'] === 'Confirmée'; $isFollowUp = $order['follow_up_status'] === 'À rappeler'; $inDeliveryBatch = isset($deliveryOrderLookup[(int) $order['id']]); ?>
-        <article class="closer-order <?= $inDeliveryBatch ? 'has-pdf-selection' : '' ?>">
+      <?php foreach ($myOrders as $order): $confirmed = $order['follow_up_status'] === 'Confirmée'; $isFollowUp = $order['follow_up_status'] === 'À rappeler'; ?>
+        <article class="closer-order">
           <img class="closer-order__image" src="<?= e(url('/' . closer_image($order, $catalog))) ?>" alt="<?= e($order['product_name'] . ' · ' . $order['variant']) ?>">
           <div class="closer-order__content">
             <div class="closer-order__top"><div><h3><?= e($order['customer_first_name'] . ' ' . $order['customer_last_name']) ?></h3><p><?= e($order['order_ref']) ?> · <?= e($order['product_name']) ?></p><time class="closer-order-time" datetime="<?= e((string) $order['created_at']) ?>">Commandée le <?= e(closer_order_time((string) $order['created_at'])) ?></time></div><span class="closer-pill <?= $confirmed ? 'is-confirmed' : ($isFollowUp ? 'is-followup' : '') ?>"><?= e($order['follow_up_status']) ?></span></div>
             <div class="closer-order__facts"><span><b><?= e($order['variant']) ?></b> · Qté <?= (int) $order['quantity'] ?></span><span><a href="tel:<?= e($order['phone']) ?>"><b><?= e($order['phone']) ?></b></a></span><span><?= e($order['district']) ?></span><span><b><?= money((int) $order['quantity'] * (int) $order['unit_price_fcfa']) ?></b></span></div>
-            <?php if ($confirmed && $inDeliveryBatch): ?>
-              <div class="closer-pdf-choice is-selected is-static">
-                <span class="closer-pdf-choice__icon" aria-hidden="true">✓</span>
-                <span class="closer-pdf-choice__copy"><strong>Commande ajoutée au bordereau</strong><small>Elle sera incluse au prochain téléchargement</small></span>
-              </div>
-            <?php elseif ($confirmed): ?>
-              <form class="closer-pdf-add" method="post">
-                <?= csrf_field() ?>
-                <input type="hidden" name="action" value="add_to_delivery">
-                <input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>">
-                <button class="closer-pdf-choice" type="submit">
-                  <span class="closer-pdf-choice__icon" aria-hidden="true">+</span>
-                  <span class="closer-pdf-choice__copy"><strong>Ajouter cette commande au bordereau</strong><small>Ajout individuel au PDF du livreur</small></span>
-                </button>
-              </form>
-            <?php endif; ?>
             <form class="closer-form" method="post">
               <?= csrf_field() ?><input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>"><input type="hidden" name="action" value="update_follow_up">
               <label>Résultat<select name="follow_up_status"><?php foreach ($trackingStates as $state): ?><option value="<?= e($state) ?>" <?= $order['follow_up_status'] === $state ? 'selected' : '' ?>><?= e($state) ?></option><?php endforeach; ?></select></label>
@@ -346,11 +327,34 @@ require APP_ROOT . '/templates/closer-header.php';
               <button class="closer-button closer-form__submit" type="submit">Enregistrer</button>
             </form>
             <?php if ($confirmed): ?>
-              <div class="closer-actions" style="margin-top:10px">
-                <form method="post"><?= csrf_field() ?><input type="hidden" name="action" value="prepare_whatsapp"><input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>"><button class="closer-button secondary" type="submit">Préparer WhatsApp</button></form>
-                <?php if ($courierReady && $order['whatsapp_prepared_at']): ?><a class="closer-button-link whatsapp" target="_blank" rel="noopener" href="<?= e(closer_whatsapp_link($order, $courierWhatsapp)) ?>">Ouvrir WhatsApp</a><?php endif; ?>
-              </div>
-              <?php if ($order['whatsapp_prepared_at']): ?><p class="closer-whatsapp-note">Message préparé le <?= e(date('d/m/Y à H:i', strtotime($order['whatsapp_prepared_at']))) ?>. WhatsApp s’ouvrira avec les informations déjà rédigées.</p><?php endif; ?>
+              <?php if (!$order['whatsapp_prepared_at']): ?>
+                <form class="closer-actions" method="post">
+                  <?= csrf_field() ?><input type="hidden" name="action" value="prepare_whatsapp"><input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>">
+                  <button class="closer-button secondary" type="submit">Préparer le message livreur</button>
+                </form>
+              <?php else: $message = closer_whatsapp_message($order); $imageUrl = url('/' . closer_image($order, $catalog)); $amount = money((int) $order['quantity'] * (int) $order['unit_price_fcfa']); ?>
+                <section class="closer-message-preview" aria-label="Aperçu du message livreur">
+                  <img src="<?= e($imageUrl) ?>" alt="<?= e($order['product_name'] . ' · ' . $order['variant']) ?>">
+                  <div><span>Message prêt à partager</span><strong><?= e($order['product_name']) ?></strong><small>Couleur : <?= e($order['variant']) ?> · Qté <?= (int) $order['quantity'] ?></small><b class="closer-message-price"><?= e($amount) ?></b></div>
+                </section>
+                <form class="closer-message-actions" method="post" data-whatsapp-send-form>
+                  <?= csrf_field() ?><input type="hidden" name="action" value="mark_whatsapp_sent"><input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>">
+                  <button class="closer-button whatsapp" type="button" data-whatsapp-share
+                    data-message="<?= e($message) ?>" data-image-url="<?= e($imageUrl) ?>"
+                    data-product="<?= e($order['product_name']) ?>" data-variant="<?= e($order['variant']) ?>"
+                    data-price="<?= e($amount) ?>" data-reference="<?= e($order['order_ref']) ?>"
+                    data-customer="<?= e(trim($order['customer_first_name'] . ' ' . $order['customer_last_name'])) ?>"
+                    data-phone="<?= e($order['phone']) ?>" data-district="<?= e($order['district']) ?>" data-quantity="<?= (int) $order['quantity'] ?>">
+                    Partager la photo + le message
+                  </button>
+                  <?php if ($courierReady): ?>
+                    <a class="closer-button-link secondary" target="_blank" rel="noopener" data-whatsapp-fallback-link href="<?= e(closer_whatsapp_link($order, $courierWhatsapp)) ?>">Ouvrir WhatsApp en texte</a>
+                    <button class="closer-button closer-message-confirm" type="submit" data-whatsapp-fallback-confirm hidden>Message envoyé — passer en livraison</button>
+                  <?php endif; ?>
+                  <p class="closer-share-status" data-share-status aria-live="polite"></p>
+                </form>
+                <p class="closer-whatsapp-note">Préparé le <?= e(date('d/m/Y à H:i', strtotime($order['whatsapp_prepared_at']))) ?>. Sur iPhone, le bouton vert partage une image avec la montre, sa couleur et le prix bien visible.</p>
+              <?php endif; ?>
             <?php endif; ?>
           </div>
         </article>

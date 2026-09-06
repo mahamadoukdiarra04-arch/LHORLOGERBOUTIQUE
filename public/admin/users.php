@@ -108,7 +108,7 @@ require APP_ROOT . '/templates/admin-header.php';
   <article class="admin-panel">
     <p class="admin-kicker">Droits</p>
     <h2>Deux interfaces, deux périmètres.</h2>
-    <p class="admin-copy"><strong>Gestionnaire</strong> : administration complète, commandes, stock, analyse et suivi closeuse. <strong>Closeuse</strong> : seulement son espace d’appels, confirmations, WhatsApp et bordereaux PDF.</p>
+    <p class="admin-copy"><strong>Gestionnaire</strong> : administration complète, commandes, stock, analyse et suivi closeuse. <strong>Closeuse</strong> : seulement son espace d’appels, confirmations et messages illustrés au livreur.</p>
     <p class="admin-copy">La suspension coupe les prochaines requêtes de l’utilisateur, même si sa session est encore ouverte.</p>
   </article>
 </section>

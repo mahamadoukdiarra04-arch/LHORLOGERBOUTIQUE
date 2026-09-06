@@ -26,12 +26,12 @@ $activeCount = (int) $pdo->query(
      FROM order_closer_tracking t
      JOIN orders o ON o.id = t.order_id
      WHERE t.follow_up_status IN ('À appeler', 'À rappeler')
-       AND o.status NOT IN ('Annulée', 'Livrée')"
+       AND o.status NOT IN ('Annulée', 'En livraison', 'Livrée')"
 )->fetchColumn();
 $confirmedStatement = $pdo->prepare("SELECT COUNT(*) FROM order_closer_tracking WHERE follow_up_status = 'Confirmée' AND DATE(updated_at) = ?");
 $confirmedStatement->execute([$today]);
 $confirmedToday = (int) $confirmedStatement->fetchColumn();
-$whatsappStatement = $pdo->prepare('SELECT COUNT(*) FROM order_closer_tracking WHERE whatsapp_prepared_at IS NOT NULL AND DATE(whatsapp_prepared_at) = ?');
+$whatsappStatement = $pdo->prepare('SELECT COUNT(*) FROM order_closer_tracking WHERE whatsapp_sent_at IS NOT NULL AND DATE(whatsapp_sent_at) = ?');
 $whatsappStatement->execute([$today]);
 $whatsappToday = (int) $whatsappStatement->fetchColumn();
 $tracking = $pdo->query(
@@ -50,21 +50,21 @@ require APP_ROOT . '/templates/admin-header.php';
   <div>
     <p class="admin-kicker">Ventes par téléphone</p>
     <h1>Suivi de la closeuse.</h1>
-    <p>Les validations, rappels et préparations livreur effectués par la closeuse apparaissent ici immédiatement.</p>
+    <p>Les validations, rappels et messages envoyés au livreur par la closeuse apparaissent ici immédiatement.</p>
   </div>
 </header>
 
 <section class="metric-grid closer-admin-metrics">
   <article class="metric"><span>À suivre</span><strong><?= $activeCount ?></strong><small>appels et rappels encore actifs</small></article>
   <article class="metric"><span>Confirmées aujourd’hui</span><strong><?= $confirmedToday ?></strong><small>commandes passées au statut confirmée</small></article>
-  <article class="metric"><span>WhatsApp préparés</span><strong><?= $whatsappToday ?></strong><small>messages livreur prêts aujourd’hui</small></article>
+  <article class="metric"><span>Messages envoyés</span><strong><?= $whatsappToday ?></strong><small>commandes transmises au livreur aujourd’hui</small></article>
 </section>
 
 <section class="admin-grid" style="margin-top:15px">
   <article class="admin-panel">
     <p class="admin-kicker">Configuration livreur</p>
     <h2>Numéro WhatsApp du livreur.</h2>
-    <p class="admin-copy">La closeuse ouvre WhatsApp avec un message déjà rempli. L’envoi reste volontairement à sa main.</p>
+    <p class="admin-copy">La closeuse partage une fiche avec la photo exacte, la couleur et le prix à encaisser. Après l’envoi, la commande passe en livraison.</p>
     <form class="data-form" method="post">
       <?= csrf_field() ?>
       <label>WhatsApp du livreur (avec indicatif pays)<input name="courier_whatsapp" inputmode="tel" maxlength="20" value="<?= e($courierWhatsapp) ?>" placeholder="223XXXXXXXX"></label>
@@ -74,7 +74,7 @@ require APP_ROOT . '/templates/admin-header.php';
   <article class="admin-panel">
     <p class="admin-kicker">Fonctionnement</p>
     <h2>Une vue séparée, une donnée commune.</h2>
-    <p class="admin-copy">La closeuse choisit ses nouvelles commandes, consigne les appels puis sélectionne les commandes confirmées dans un bordereau PDF illustré. Les statuts et canaux d’acquisition restent visibles dans les commandes et les analyses de gestion.</p>
+    <p class="admin-copy">La closeuse choisit ses nouvelles commandes, consigne les appels puis partage chaque commande confirmée au livreur dans un message illustré. Les statuts et canaux d’acquisition restent visibles dans les commandes et les analyses de gestion.</p>
   </article>
 </section>
 
@@ -94,7 +94,7 @@ require APP_ROOT . '/templates/admin-header.php';
           <td data-label="Suivi"><span class="status status-<?= e(strtolower(str_replace([' ', 'é', 'à'], ['-', 'e', 'a'], $item['follow_up_status']))) ?>"><?= e($item['follow_up_status']) ?></span><?php if ($item['note']): ?><br><small><?= e($item['note']) ?></small><?php endif; ?></td>
           <td data-label="Rappel"><?= $item['follow_up_at'] ? e(date('d/m/Y H:i', strtotime($item['follow_up_at']))) : '—' ?></td>
           <td data-label="Canal"><?= e((string) ($item['acquisition_channel'] ?? '—')) ?></td>
-          <td data-label="Livraison"><?= $item['whatsapp_prepared_at'] ? 'WhatsApp prêt · ' . e(date('d/m H:i', strtotime($item['whatsapp_prepared_at']))) : '—' ?></td>
+          <td data-label="Livraison"><?php if ($item['whatsapp_sent_at']): ?>Envoyé · <?= e(date('d/m H:i', strtotime($item['whatsapp_sent_at']))) ?><?php elseif ($item['whatsapp_prepared_at']): ?>Prêt · <?= e(date('d/m H:i', strtotime($item['whatsapp_prepared_at']))) ?><?php else: ?>—<?php endif; ?></td>
         </tr>
       <?php endforeach; ?>
       <?php if (!$tracking): ?><tr class="mobile-card-empty"><td colspan="8" class="admin-table-empty">Aucune commande n’est encore prise en charge par la closeuse.</td></tr><?php endif; ?>

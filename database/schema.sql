@@ -111,6 +111,7 @@ CREATE TABLE IF NOT EXISTS order_closer_tracking (
   follow_up_at DATETIME NULL,
   note TEXT NULL,
   whatsapp_prepared_at DATETIME NULL,
+  whatsapp_sent_at DATETIME NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_closer_status (closer_identity, follow_up_status),

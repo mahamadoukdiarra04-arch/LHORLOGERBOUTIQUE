@@ -224,7 +224,7 @@ function ensure_closer_schema(): void {
     if ($ready) return;
 
     $pdo = db();
-    $schemaVersion = '20260906_unreachable_cancels_order';
+    $schemaVersion = '20260906_whatsapp_delivery';
     // The closer opens this page many times a day. The version flag avoids DDL
     // checks after this migration has been applied once.
     try {
@@ -234,7 +234,8 @@ function ensure_closer_schema(): void {
             $pdo->query('SELECT 1 FROM closer_delivery_batches LIMIT 1');
             $pdo->query('SELECT 1 FROM closer_delivery_batch_orders LIMIT 1');
             $statusColumn = $pdo->query("SHOW COLUMNS FROM orders LIKE 'status'")->fetch();
-            if ($statusColumn && !str_contains((string) ($statusColumn['Type'] ?? ''), 'Injoignable')) {
+            $sentColumn = $pdo->query("SHOW COLUMNS FROM order_closer_tracking LIKE 'whatsapp_sent_at'")->fetch();
+            if ($sentColumn && $statusColumn && !str_contains((string) ($statusColumn['Type'] ?? ''), 'Injoignable')) {
                 $ready = true;
                 return;
             }
@@ -251,6 +252,7 @@ function ensure_closer_schema(): void {
             follow_up_at DATETIME NULL,
             note TEXT NULL,
             whatsapp_prepared_at DATETIME NULL,
+            whatsapp_sent_at DATETIME NULL,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             INDEX idx_closer_status (closer_identity, follow_up_status),
@@ -301,6 +303,13 @@ function ensure_closer_schema(): void {
             CONSTRAINT fk_closer_delivery_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
     );
+    $sentColumn = $pdo->query("SHOW COLUMNS FROM order_closer_tracking LIKE 'whatsapp_sent_at'")->fetch();
+    if (!$sentColumn) {
+        $pdo->exec('ALTER TABLE order_closer_tracking ADD COLUMN whatsapp_sent_at DATETIME NULL AFTER whatsapp_prepared_at');
+    }
+    // Les anciens brouillons restent conservés pour l'historique mais ne sont
+    // plus actifs depuis le remplacement des bordereaux par les messages.
+    $pdo->exec("UPDATE closer_delivery_batches SET status = 'replaced', draft_owner = NULL WHERE status = 'draft'");
     $statusColumn = $pdo->query("SHOW COLUMNS FROM orders LIKE 'status'")->fetch();
     if ($statusColumn && str_contains((string) ($statusColumn['Type'] ?? ''), 'Injoignable')) {
         // "Injoignable" is a call outcome, not a commercial order state.
