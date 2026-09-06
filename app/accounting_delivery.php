@@ -159,7 +159,7 @@ function accounting_confirm_delivery(PDO $pdo, int $orderId, array $data, ?int $
 
         $lines = accounting_delivery_order_lines($pdo, $orderRef, true);
         foreach ($lines as $line) {
-            if (in_array($line['status'], ['Annulée', 'Injoignable'], true)) throw new RuntimeException('Une ligne de cette référence est annulée ou injoignable et ne peut pas être livrée.');
+            if ($line['status'] === 'Annulée') throw new RuntimeException('Une ligne de cette référence est annulée et ne peut pas être livrée.');
             if ($line['status'] === 'Livrée') throw new RuntimeException('Cette référence a déjà été livrée.');
             if ((int) ($line['stock_processed'] ?? 0) === 1) throw new RuntimeException('Le stock de cette référence a déjà été traité. Vérifiez son historique avant de la livrer.');
             if (!in_array($line['acquisition_channel'], ['Meta', 'Réachat'], true)) {

@@ -108,7 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->commit();
             flash('success', 'Commande ajoutée au bordereau en cours.');
         } elseif ($action === 'update_follow_up') {
-            if (in_array($order['status'], ['Annulée', 'Injoignable', 'Livrée'], true)) {
+            if (in_array($order['status'], ['Annulée', 'Livrée'], true)) {
                 throw new RuntimeException('Cette commande est déjà ' . strtolower((string) $order['status']) . ' et a été retirée de votre suivi actif.');
             }
             $state = (string) ($_POST['follow_up_status'] ?? '');
@@ -127,9 +127,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $updateOrder->execute([$channel, $order['order_ref']]);
                 log_event('commande', 'Confirmée par ' . $closer, (int) $order['product_id'], $orderId);
             } elseif (in_array($state, ['Annulée', 'Injoignable'], true)) {
-                $terminalStatus = $isUnreachable ? 'Injoignable' : 'Annulée';
-                $updateOrder = $pdo->prepare('UPDATE orders SET status = ? WHERE order_ref = ?');
-                $updateOrder->execute([$terminalStatus, $order['order_ref']]);
+                $updateOrder = $pdo->prepare("UPDATE orders SET status = 'Annulée' WHERE order_ref = ?");
+                $updateOrder->execute([$order['order_ref']]);
                 log_event(
                     'commande',
                     $isUnreachable ? 'Classée injoignable par ' . $closer : 'Annulée par ' . $closer,
@@ -234,7 +233,7 @@ $myOrdersStatement = $pdo->prepare(
      JOIN orders o ON o.id = t.order_id
      JOIN products p ON p.id = o.product_id
      WHERE t.closer_identity = ?
-       AND o.status NOT IN ('Annulée', 'Injoignable', 'Livrée')
+       AND o.status NOT IN ('Annulée', 'Livrée')
        AND NOT EXISTS (
            SELECT 1
            FROM closer_delivery_batch_orders completed_item
@@ -269,7 +268,7 @@ $followUpCountStatement = $pdo->prepare(
      JOIN orders o ON o.id = t.order_id
      WHERE t.closer_identity = ?
        AND t.follow_up_status = 'À rappeler'
-       AND o.status NOT IN ('Annulée', 'Injoignable', 'Livrée')"
+       AND o.status NOT IN ('Annulée', 'Livrée')"
 );
 $followUpCountStatement->execute([$closer]);
 $followUpCount = (int) $followUpCountStatement->fetchColumn();

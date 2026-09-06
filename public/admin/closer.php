@@ -26,7 +26,7 @@ $activeCount = (int) $pdo->query(
      FROM order_closer_tracking t
      JOIN orders o ON o.id = t.order_id
      WHERE t.follow_up_status IN ('À appeler', 'À rappeler')
-       AND o.status NOT IN ('Annulée', 'Injoignable', 'Livrée')"
+       AND o.status NOT IN ('Annulée', 'Livrée')"
 )->fetchColumn();
 $confirmedStatement = $pdo->prepare("SELECT COUNT(*) FROM order_closer_tracking WHERE follow_up_status = 'Confirmée' AND DATE(updated_at) = ?");
 $confirmedStatement->execute([$today]);

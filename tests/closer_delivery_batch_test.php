@@ -24,7 +24,7 @@ closer_batch_assert(
 closer_batch_assert(
     str_contains($closer, "elseif (\$action === 'add_to_delivery')")
         && str_contains($closer, 'Commande ajoutée au bordereau')
-        && str_contains($closer, "o.status NOT IN ('Annulée', 'Injoignable', 'Livrée')"),
+        && str_contains($closer, "o.status NOT IN ('Annulée', 'Livrée')"),
     'La closeuse doit ajouter les commandes une par une et ne plus voir les états terminaux.'
 );
 closer_batch_assert(
@@ -35,10 +35,11 @@ closer_batch_assert(
     'Un téléchargement doit passer les commandes en livraison et clôturer le brouillon courant avant le suivant.'
 );
 closer_batch_assert(
-    str_contains($management, "'Injoignable'")
-        && str_contains($bootstrap, "WHEN o.status = 'Injoignable' THEN 'Injoignable'")
+    str_contains($closer, "UPDATE orders SET status = 'Annulée' WHERE order_ref = ?")
+        && str_contains($bootstrap, "WHEN o.status = 'Annulée' AND t.follow_up_status = 'Injoignable' THEN 'Injoignable'")
+        && !str_contains($management, "'Injoignable'")
         && str_contains($bootstrap, "DELETE batch_item"),
-    'Injoignable doit être visible en gestion et retiré du suivi et du bordereau actif.'
+    'Injoignable doit annuler la commande en gestion tout en conservant le motif d’appel, hors du suivi actif.'
 );
 
 echo "closer_delivery_batch_test: OK\n";

@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS orders (
   variant VARCHAR(120) NOT NULL,
   quantity SMALLINT UNSIGNED NOT NULL,
   unit_price_fcfa INT UNSIGNED NOT NULL,
-  status ENUM('À confirmer','Confirmée','En livraison','Livrée','Annulée','Injoignable') NOT NULL DEFAULT 'À confirmer',
+  status ENUM('À confirmer','Confirmée','En livraison','Livrée','Annulée') NOT NULL DEFAULT 'À confirmer',
   acquisition_channel ENUM('Meta','Réachat') NULL,
   stock_processed TINYINT(1) NOT NULL DEFAULT 0,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

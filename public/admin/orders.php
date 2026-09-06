@@ -12,7 +12,7 @@ try {
 }
 
 function orders_statuses_without_delivery(): array {
-    return ['À confirmer', 'Confirmée', 'En livraison', 'Annulée', 'Injoignable'];
+    return ['À confirmer', 'Confirmée', 'En livraison', 'Annulée'];
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -55,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new RuntimeException('Une référence déjà livrée ne peut plus être modifiée depuis cette liste.');
                 }
             }
-            if (in_array($status, ['Annulée', 'Injoignable'], true)) {
+            if ($status === 'Annulée') {
                 $update = $pdo->prepare('UPDATE orders SET status = ? WHERE order_ref = ?');
                 $update->execute([$status, $order['order_ref']]);
             } else {
@@ -84,7 +84,7 @@ $search = trim((string) ($_GET['q'] ?? ''));
 $selected = (int) ($_GET['order'] ?? 0);
 $where = [];
 $params = [];
-if (in_array($statusFilter, ['À confirmer', 'Confirmée', 'En livraison', 'Livrée', 'Annulée', 'Injoignable'], true)) {
+if (in_array($statusFilter, ['À confirmer', 'Confirmée', 'En livraison', 'Livrée', 'Annulée'], true)) {
     $where[] = 'o.status = ?';
     $params[] = $statusFilter;
 }
@@ -139,7 +139,7 @@ require APP_ROOT . '/templates/admin-header.php';
 
 <form class="admin-filter" method="get">
   <input name="q" value="<?= e($search) ?>" placeholder="Client, référence ou quartier">
-  <select name="status"><option value="">Tous les états</option><?php foreach (['À confirmer', 'Confirmée', 'En livraison', 'Livrée', 'Annulée', 'Injoignable'] as $option): ?><option <?= $statusFilter === $option ? 'selected' : '' ?>><?= e($option) ?></option><?php endforeach; ?></select>
+  <select name="status"><option value="">Tous les états</option><?php foreach (['À confirmer', 'Confirmée', 'En livraison', 'Livrée', 'Annulée'] as $option): ?><option <?= $statusFilter === $option ? 'selected' : '' ?>><?= e($option) ?></option><?php endforeach; ?></select>
   <button class="admin-button">Filtrer</button>
 </form>
 
@@ -234,7 +234,7 @@ require APP_ROOT . '/templates/admin-header.php';
           <label>Statut<select name="status"><?php foreach (orders_statuses_without_delivery() as $option): ?><option <?= $order['status'] === $option ? 'selected' : '' ?>><?= e($option) ?></option><?php endforeach; ?></select></label>
           <label>Canal d’acquisition<select name="channel"><option value="">À renseigner</option><?php foreach (['Meta', 'Réachat'] as $channel): ?><option <?= $order['acquisition_channel'] === $channel ? 'selected' : '' ?>><?= $channel ?></option><?php endforeach; ?></select></label>
           <button class="admin-button">Enregistrer</button>
-          <?php if (!in_array($order['status'], ['Annulée', 'Injoignable'], true)): ?><a class="admin-button" href="<?= e(url('/admin/accounting-delivery.php?order=' . (int) $order['id'])) ?>">Encaisser & livrer</a><?php endif; ?>
+          <?php if ($order['status'] !== 'Annulée'): ?><a class="admin-button" href="<?= e(url('/admin/accounting-delivery.php?order=' . (int) $order['id'])) ?>">Encaisser & livrer</a><?php endif; ?>
         </form>
       <?php endif; ?>
       <a class="order-detail-close" href="?<?= e(http_build_query(['q' => $search, 'status' => $statusFilter])) ?>#order-card-<?= (int) $order['id'] ?>">Fermer les détails <span class="order-action-arrow" aria-hidden="true">↑</span></a>

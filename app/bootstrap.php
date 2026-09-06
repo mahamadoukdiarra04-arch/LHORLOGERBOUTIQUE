@@ -224,7 +224,7 @@ function ensure_closer_schema(): void {
     if ($ready) return;
 
     $pdo = db();
-    $schemaVersion = '20260906_delivery_batches';
+    $schemaVersion = '20260906_unreachable_cancels_order';
     // The closer opens this page many times a day. The version flag avoids DDL
     // checks after this migration has been applied once.
     try {
@@ -234,7 +234,7 @@ function ensure_closer_schema(): void {
             $pdo->query('SELECT 1 FROM closer_delivery_batches LIMIT 1');
             $pdo->query('SELECT 1 FROM closer_delivery_batch_orders LIMIT 1');
             $statusColumn = $pdo->query("SHOW COLUMNS FROM orders LIKE 'status'")->fetch();
-            if ($statusColumn && str_contains((string) ($statusColumn['Type'] ?? ''), 'Injoignable')) {
+            if ($statusColumn && !str_contains((string) ($statusColumn['Type'] ?? ''), 'Injoignable')) {
                 $ready = true;
                 return;
             }
@@ -302,13 +302,24 @@ function ensure_closer_schema(): void {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
     );
     $statusColumn = $pdo->query("SHOW COLUMNS FROM orders LIKE 'status'")->fetch();
-    if (!$statusColumn || !str_contains((string) ($statusColumn['Type'] ?? ''), 'Injoignable')) {
+    if ($statusColumn && str_contains((string) ($statusColumn['Type'] ?? ''), 'Injoignable')) {
+        // "Injoignable" is a call outcome, not a commercial order state.
+        // Existing rows created before this rule are safely normalized first.
+        $pdo->exec("UPDATE orders SET status = 'Annulée' WHERE status = 'Injoignable'");
         $pdo->exec(
             "ALTER TABLE orders MODIFY COLUMN status
-             ENUM('À confirmer','Confirmée','En livraison','Livrée','Annulée','Injoignable')
+             ENUM('À confirmer','Confirmée','En livraison','Livrée','Annulée')
              NOT NULL DEFAULT 'À confirmer'"
         );
     }
+    $pdo->exec(
+        "DELETE batch_item
+         FROM closer_delivery_batch_orders batch_item
+         JOIN closer_delivery_batches batch ON batch.id = batch_item.batch_id
+         JOIN orders o ON o.id = batch_item.order_id
+         WHERE o.status IN ('Annulée', 'Livrée')
+           AND batch.status = 'draft'"
+    );
     $versionStatement = $pdo->prepare(
         "INSERT INTO app_settings (setting_key, setting_value) VALUES ('closer_schema_version', ?)
          ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)"
@@ -379,25 +390,24 @@ function sync_closer_tracking_for_order_ref(PDO $pdo, string $orderRef): void {
         "UPDATE order_closer_tracking t
          JOIN orders o ON o.id = t.order_id
          SET t.follow_up_status = CASE
+             WHEN o.status = 'Annulée' AND t.follow_up_status = 'Injoignable' THEN 'Injoignable'
              WHEN o.status = 'Annulée' THEN 'Annulée'
-             WHEN o.status = 'Injoignable' THEN 'Injoignable'
              WHEN o.status = 'Livrée' THEN 'Livrée'
              WHEN o.status IN ('Confirmée', 'En livraison') THEN 'Confirmée'
              WHEN o.status = 'À confirmer' AND t.follow_up_status IN ('Confirmée', 'Annulée', 'Injoignable', 'Livrée') THEN 'À appeler'
              ELSE t.follow_up_status
          END,
          t.follow_up_at = CASE
-             WHEN o.status IN ('Annulée', 'Injoignable', 'Livrée') THEN NULL
+             WHEN o.status IN ('Annulée', 'Livrée') THEN NULL
              ELSE t.follow_up_at
          END
          WHERE o.order_ref = ?
            AND (
-             (o.status = 'Annulée' AND t.follow_up_status <> 'Annulée')
-             OR (o.status = 'Injoignable' AND t.follow_up_status <> 'Injoignable')
+             (o.status = 'Annulée' AND t.follow_up_status NOT IN ('Annulée', 'Injoignable'))
              OR (o.status = 'Livrée' AND t.follow_up_status <> 'Livrée')
              OR (o.status IN ('Confirmée', 'En livraison') AND t.follow_up_status <> 'Confirmée')
              OR (o.status = 'À confirmer' AND t.follow_up_status IN ('Confirmée', 'Annulée', 'Injoignable', 'Livrée'))
-             OR (o.status IN ('Annulée', 'Injoignable', 'Livrée') AND t.follow_up_at IS NOT NULL)
+             OR (o.status IN ('Annulée', 'Livrée') AND t.follow_up_at IS NOT NULL)
            )"
     );
     $statement->execute([$orderRef]);
@@ -411,7 +421,7 @@ function sync_closer_tracking_for_order_ref(PDO $pdo, string $orderRef): void {
          JOIN closer_delivery_batches batch ON batch.id = batch_item.batch_id
          JOIN orders o ON o.id = batch_item.order_id
          WHERE o.order_ref = ?
-           AND o.status IN ('Annulée', 'Injoignable', 'Livrée')
+           AND o.status IN ('Annulée', 'Livrée')
            AND batch.status = 'draft'"
     );
     $removeFromDraft->execute([$orderRef]);
@@ -422,23 +432,22 @@ function sync_all_closer_tracking(PDO $pdo): void {
         "UPDATE order_closer_tracking t
          JOIN orders o ON o.id = t.order_id
          SET t.follow_up_status = CASE
+             WHEN o.status = 'Annulée' AND t.follow_up_status = 'Injoignable' THEN 'Injoignable'
              WHEN o.status = 'Annulée' THEN 'Annulée'
-             WHEN o.status = 'Injoignable' THEN 'Injoignable'
              WHEN o.status = 'Livrée' THEN 'Livrée'
              WHEN o.status IN ('Confirmée', 'En livraison') THEN 'Confirmée'
              WHEN o.status = 'À confirmer' AND t.follow_up_status IN ('Confirmée', 'Annulée', 'Injoignable', 'Livrée') THEN 'À appeler'
              ELSE t.follow_up_status
          END,
          t.follow_up_at = CASE
-             WHEN o.status IN ('Annulée', 'Injoignable', 'Livrée') THEN NULL
+             WHEN o.status IN ('Annulée', 'Livrée') THEN NULL
              ELSE t.follow_up_at
          END
-         WHERE (o.status = 'Annulée' AND t.follow_up_status <> 'Annulée')
-            OR (o.status = 'Injoignable' AND t.follow_up_status <> 'Injoignable')
+         WHERE (o.status = 'Annulée' AND t.follow_up_status NOT IN ('Annulée', 'Injoignable'))
             OR (o.status = 'Livrée' AND t.follow_up_status <> 'Livrée')
             OR (o.status IN ('Confirmée', 'En livraison') AND t.follow_up_status <> 'Confirmée')
             OR (o.status = 'À confirmer' AND t.follow_up_status IN ('Confirmée', 'Annulée', 'Injoignable', 'Livrée'))
-            OR (o.status IN ('Annulée', 'Injoignable', 'Livrée') AND t.follow_up_at IS NOT NULL)"
+            OR (o.status IN ('Annulée', 'Livrée') AND t.follow_up_at IS NOT NULL)"
     );
     $statement->execute();
 
@@ -447,7 +456,7 @@ function sync_all_closer_tracking(PDO $pdo): void {
          FROM closer_delivery_batch_orders batch_item
          JOIN closer_delivery_batches batch ON batch.id = batch_item.batch_id
          JOIN orders o ON o.id = batch_item.order_id
-         WHERE o.status IN ('Annulée', 'Injoignable', 'Livrée')
+         WHERE o.status IN ('Annulée', 'Livrée')
            AND batch.status = 'draft'"
     );
 }
