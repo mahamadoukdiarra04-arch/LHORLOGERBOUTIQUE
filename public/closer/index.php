@@ -21,7 +21,7 @@ function closer_datetime(?string $value): ?string {
     return $date ? $date->format('Y-m-d H:i:s') : null;
 }
 function closer_image(array $order, array $catalog): string {
-    return catalog_variant_image(
+    return catalog_order_preview_image(
         $catalog,
         (string) ($order['slug'] ?? ''),
         (string) ($order['variant'] ?? '')
@@ -92,8 +92,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('success', 'Commande ajoutée à votre suivi.');
         } elseif (!$tracking || $tracking['closer_identity'] !== $closer) {
             throw new RuntimeException('Ajoutez d’abord cette commande à votre suivi.');
+        } elseif ($action === 'add_to_delivery') {
+            if ($tracking['follow_up_status'] !== 'Confirmée' || $order['status'] !== 'Confirmée') {
+                throw new RuntimeException('Confirmez la commande avant de l’ajouter au bordereau.');
+            }
+            $batch = closer_delivery_draft($pdo, $closer, true);
+            $addToBatch = $pdo->prepare(
+                'INSERT IGNORE INTO closer_delivery_batch_orders (batch_id, order_id) VALUES (?, ?)'
+            );
+            $addToBatch->execute([(int) $batch['id'], $orderId]);
+            if ($addToBatch->rowCount() < 1) {
+                throw new RuntimeException('Cette commande est déjà ajoutée au bordereau en cours ou à un bordereau téléchargé.');
+            }
+            log_closer_event($orderId, 'Ajout au bordereau', 'Commande ajoutée au bordereau PDF en cours.');
+            $pdo->commit();
+            flash('success', 'Commande ajoutée au bordereau en cours.');
         } elseif ($action === 'update_follow_up') {
-            if (in_array($order['status'], ['Annulée', 'Livrée'], true)) {
+            if (in_array($order['status'], ['Annulée', 'Injoignable', 'Livrée'], true)) {
                 throw new RuntimeException('Cette commande est déjà ' . strtolower((string) $order['status']) . ' et a été retirée de votre suivi actif.');
             }
             $state = (string) ($_POST['follow_up_status'] ?? '');
@@ -106,14 +121,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $updateTracking = $pdo->prepare('UPDATE order_closer_tracking SET follow_up_status = ?, follow_up_at = ?, note = ? WHERE order_id = ?');
             $updateTracking->execute([$state, $followUp, $note !== '' ? $note : null, $orderId]);
+            $isUnreachable = $state === 'Injoignable';
             if ($state === 'Confirmée') {
                 $updateOrder = $pdo->prepare("UPDATE orders SET status = 'Confirmée', acquisition_channel = ? WHERE order_ref = ?");
                 $updateOrder->execute([$channel, $order['order_ref']]);
                 log_event('commande', 'Confirmée par ' . $closer, (int) $order['product_id'], $orderId);
-            } elseif ($state === 'Annulée') {
-                $updateOrder = $pdo->prepare("UPDATE orders SET status = 'Annulée' WHERE order_ref = ?");
-                $updateOrder->execute([$order['order_ref']]);
-                log_event('commande', 'Annulée par ' . $closer, (int) $order['product_id'], $orderId);
+            } elseif (in_array($state, ['Annulée', 'Injoignable'], true)) {
+                $terminalStatus = $isUnreachable ? 'Injoignable' : 'Annulée';
+                $updateOrder = $pdo->prepare('UPDATE orders SET status = ? WHERE order_ref = ?');
+                $updateOrder->execute([$terminalStatus, $order['order_ref']]);
+                log_event(
+                    'commande',
+                    $isUnreachable ? 'Classée injoignable par ' . $closer : 'Annulée par ' . $closer,
+                    (int) $order['product_id'],
+                    $orderId
+                );
             } else {
                 $updateOrder = $pdo->prepare("UPDATE orders SET status = 'À confirmer', acquisition_channel = NULL WHERE order_ref = ?");
                 $updateOrder->execute([$order['order_ref']]);
@@ -121,7 +143,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             sync_closer_tracking_for_order_ref($pdo, (string) $order['order_ref']);
             log_closer_event($orderId, $state, $note !== '' ? $note : null);
             $pdo->commit();
-            flash('success', 'Suivi de commande mis à jour.');
+            flash(
+                'success',
+                $isUnreachable ? 'Commande classée injoignable et retirée du suivi.' : 'Suivi de commande mis à jour.'
+            );
         } elseif ($action === 'prepare_whatsapp') {
             if ($tracking['follow_up_status'] !== 'Confirmée' || $order['status'] !== 'Confirmée') {
                 throw new RuntimeException('Confirmez la commande avant de préparer WhatsApp.');
@@ -167,6 +192,10 @@ $closerStockTotal = array_reduce(
 );
 $courierWhatsapp = trim((string) app_setting('courier_whatsapp', ''));
 $courierReady = preg_match('/^\d{8,15}$/', preg_replace('/\D+/', '', $courierWhatsapp)) === 1;
+$deliveryBatch = closer_delivery_draft($pdo, $closer);
+$deliveryOrderIds = closer_delivery_order_ids($pdo, (int) $deliveryBatch['id']);
+$deliveryOrderLookup = array_fill_keys($deliveryOrderIds, true);
+$deliveryOrderCount = count($deliveryOrderIds);
 $newSearch = trim((string) ($_GET['new_q'] ?? ''));
 if (mb_strlen($newSearch) > 80) $newSearch = mb_substr($newSearch, 0, 80);
 $newPage = filter_var($_GET['new_page'] ?? 1, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 1;
@@ -205,12 +234,20 @@ $myOrdersStatement = $pdo->prepare(
      JOIN orders o ON o.id = t.order_id
      JOIN products p ON p.id = o.product_id
      WHERE t.closer_identity = ?
-       AND o.status NOT IN ('Annulée', 'Livrée')
+       AND o.status NOT IN ('Annulée', 'Injoignable', 'Livrée')
+       AND NOT EXISTS (
+           SELECT 1
+           FROM closer_delivery_batch_orders completed_item
+           JOIN closer_delivery_batches completed_batch ON completed_batch.id = completed_item.batch_id
+           WHERE completed_item.order_id = o.id
+             AND completed_batch.closer_identity = t.closer_identity
+             AND completed_batch.status = 'downloaded'
+       )
        AND (
-           t.follow_up_status IN ('À appeler', 'À rappeler', 'Injoignable')
+           t.follow_up_status IN ('À appeler', 'À rappeler')
            OR (t.follow_up_status = 'Confirmée' AND (t.whatsapp_prepared_at IS NULL OR DATE(t.updated_at) = CURDATE()))
        )
-     ORDER BY FIELD(t.follow_up_status, 'À appeler', 'À rappeler', 'Injoignable', 'Confirmée', 'Annulée'),
+     ORDER BY FIELD(t.follow_up_status, 'À appeler', 'À rappeler', 'Confirmée', 'Annulée'),
               t.follow_up_at IS NULL, t.follow_up_at, t.updated_at DESC"
 );
 $myOrdersStatement->execute([$closer]);
@@ -232,7 +269,7 @@ $followUpCountStatement = $pdo->prepare(
      JOIN orders o ON o.id = t.order_id
      WHERE t.closer_identity = ?
        AND t.follow_up_status = 'À rappeler'
-       AND o.status NOT IN ('Annulée', 'Livrée')"
+       AND o.status NOT IN ('Annulée', 'Injoignable', 'Livrée')"
 );
 $followUpCountStatement->execute([$closer]);
 $followUpCount = (int) $followUpCountStatement->fetchColumn();
@@ -257,7 +294,7 @@ require APP_ROOT . '/templates/closer-header.php';
     <div class="closer-stock__rail" aria-label="Quantités disponibles par coloris" tabindex="0">
       <?php foreach ($closerStock as $variant): $available = max(0, (int) $variant['quantity']); ?>
         <article class="closer-stock-card <?= $available === 0 ? 'is-empty' : '' ?>">
-          <img src="<?= e(url('/' . catalog_variant_image($catalog, (string) $variant['slug'], (string) $variant['variant_name']))) ?>" alt="<?= e($variant['product_name'] . ' · ' . $variant['variant_name']) ?>">
+          <img src="<?= e(url('/' . catalog_order_preview_image($catalog, (string) $variant['slug'], (string) $variant['variant_name']))) ?>" alt="<?= e($variant['product_name'] . ' · ' . $variant['variant_name']) ?>">
           <div class="closer-stock-card__copy"><span><?= e($variant['product_name']) ?></span><strong><?= e($variant['variant_name']) ?></strong></div>
           <div class="closer-stock-card__quantity"><b><?= $available ?></b><span>disponible<?= $available === 1 ? '' : 's' ?></span></div>
         </article>
@@ -270,21 +307,37 @@ require APP_ROOT . '/templates/closer-header.php';
 <div class="closer-layout">
   <section class="closer-panel closer-panel--followup">
     <div class="closer-panel__head"><div><h2>Mon suivi</h2><p>Chaque validation met immédiatement à jour l’état et le canal dans l’administration.</p></div></div>
-    <form id="delivery-selection" class="closer-delivery" method="post" action="<?= e(url('/closer/delivery-sheet.php')) ?>">
+    <form id="delivery-selection" class="closer-delivery" method="post" action="<?= e(url('/closer/delivery-sheet.php')) ?>" target="_blank" data-delivery-download>
       <?= csrf_field() ?>
-      <p><strong>Commandes du jour</strong><br>Sélectionnez les commandes confirmées, puis téléchargez le bordereau PDF avec photos.</p>
+      <input type="hidden" name="batch_id" value="<?= (int) $deliveryBatch['id'] ?>">
+      <p><strong>Bordereau en cours</strong><br><?= $deliveryOrderCount === 0 ? 'Aucune commande ajoutée.' : $deliveryOrderCount . ' commande' . ($deliveryOrderCount > 1 ? 's' : '') . ' prête' . ($deliveryOrderCount > 1 ? 's' : '') . ' à télécharger.' ?></p>
       <input class="closer-delivery-date" type="date" name="delivery_date" value="<?= e($today) ?>" aria-label="Date du bordereau">
-      <button class="closer-button" type="submit">Télécharger le PDF</button>
+      <button class="closer-button" type="submit" <?= $deliveryOrderCount === 0 ? 'disabled' : '' ?>>Télécharger le bordereau<?= $deliveryOrderCount > 0 ? ' (' . $deliveryOrderCount . ')' : '' ?></button>
     </form>
     <?php if (!$courierReady): ?><p class="closer-warning">Le numéro WhatsApp du livreur n’est pas encore renseigné. La gestion peut l’ajouter dans « Suivi closeuse ».</p><?php endif; ?>
     <div class="closer-orders">
-      <?php foreach ($myOrders as $order): $confirmed = $order['follow_up_status'] === 'Confirmée'; $isFollowUp = $order['follow_up_status'] === 'À rappeler'; ?>
-        <article class="closer-order">
+      <?php foreach ($myOrders as $order): $confirmed = $order['follow_up_status'] === 'Confirmée'; $isFollowUp = $order['follow_up_status'] === 'À rappeler'; $inDeliveryBatch = isset($deliveryOrderLookup[(int) $order['id']]); ?>
+        <article class="closer-order <?= $inDeliveryBatch ? 'has-pdf-selection' : '' ?>">
           <img class="closer-order__image" src="<?= e(url('/' . closer_image($order, $catalog))) ?>" alt="<?= e($order['product_name'] . ' · ' . $order['variant']) ?>">
           <div class="closer-order__content">
             <div class="closer-order__top"><div><h3><?= e($order['customer_first_name'] . ' ' . $order['customer_last_name']) ?></h3><p><?= e($order['order_ref']) ?> · <?= e($order['product_name']) ?></p><time class="closer-order-time" datetime="<?= e((string) $order['created_at']) ?>">Commandée le <?= e(closer_order_time((string) $order['created_at'])) ?></time></div><span class="closer-pill <?= $confirmed ? 'is-confirmed' : ($isFollowUp ? 'is-followup' : '') ?>"><?= e($order['follow_up_status']) ?></span></div>
             <div class="closer-order__facts"><span><b><?= e($order['variant']) ?></b> · Qté <?= (int) $order['quantity'] ?></span><span><a href="tel:<?= e($order['phone']) ?>"><b><?= e($order['phone']) ?></b></a></span><span><?= e($order['district']) ?></span><span><b><?= money((int) $order['quantity'] * (int) $order['unit_price_fcfa']) ?></b></span></div>
-            <?php if ($confirmed): ?><label class="closer-choice"><input form="delivery-selection" type="checkbox" name="order_ids[]" value="<?= (int) $order['id'] ?>"> Ajouter au PDF du livreur</label><?php endif; ?>
+            <?php if ($confirmed && $inDeliveryBatch): ?>
+              <div class="closer-pdf-choice is-selected is-static">
+                <span class="closer-pdf-choice__icon" aria-hidden="true">✓</span>
+                <span class="closer-pdf-choice__copy"><strong>Commande ajoutée au bordereau</strong><small>Elle sera incluse au prochain téléchargement</small></span>
+              </div>
+            <?php elseif ($confirmed): ?>
+              <form class="closer-pdf-add" method="post">
+                <?= csrf_field() ?>
+                <input type="hidden" name="action" value="add_to_delivery">
+                <input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>">
+                <button class="closer-pdf-choice" type="submit">
+                  <span class="closer-pdf-choice__icon" aria-hidden="true">+</span>
+                  <span class="closer-pdf-choice__copy"><strong>Ajouter cette commande au bordereau</strong><small>Ajout individuel au PDF du livreur</small></span>
+                </button>
+              </form>
+            <?php endif; ?>
             <form class="closer-form" method="post">
               <?= csrf_field() ?><input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>"><input type="hidden" name="action" value="update_follow_up">
               <label>Résultat<select name="follow_up_status"><?php foreach ($trackingStates as $state): ?><option value="<?= e($state) ?>" <?= $order['follow_up_status'] === $state ? 'selected' : '' ?>><?= e($state) ?></option><?php endforeach; ?></select></label>

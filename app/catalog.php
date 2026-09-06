@@ -22,6 +22,7 @@ function catalog(): array {
                 'Bleu signature' => ['products/azur-bleu-signature-lifestyle.webp','products/azur-squelette-lifestyle.jpg','products/azur-squelette-portrait.jpg','products/azur-bleu-signature-waterproof.webp','products/azur-bleu-signature-back.webp','products/azur-bleu-signature-closeup.webp'],
                 'Noir squelette' => ['products/variants/azur-noir-squelette.jpg','products/azur-noir-squelette-wrist.webp','products/azur-noir-squelette-front.webp','products/azur-noir-squelette-back.webp','products/azur-noir-squelette-angle.webp'],
             ],
+            'order_preview_images' => ['Bleu signature' => 'products/azur-bleu-signature-order-preview.jpg'],
             'specs' => ['Diamètre du cadran' => '46 mm', 'Épaisseur' => '11 mm', 'Mouvement' => 'Mécanique', 'Boîtier' => 'Octogonal à facettes', 'Cadran' => 'Squelette bleu & or', 'Fond' => 'Transparent', 'Étanchéité annoncée' => '30 m', 'Fermoir' => 'Boucle déployante, acier inoxydable'],
             'features' => [['Le mouvement à ciel ouvert', 'Le cadran squelette laisse apparaître les rouages et le balancier.'], ['Un boîtier qui accroche la lumière', 'Les facettes octogonales, le bleu intense et les touches métalliques apportent du relief.'], ['Pensée sous tous les angles', 'Fond transparent, couronne vissée et boucle déployante complètent la construction.']],
         ],
@@ -90,4 +91,22 @@ function catalog_variant_image(array $catalog, string $slug, ?string $variant): 
     }
 
     return $fallback;
+}
+
+/**
+ * Use a compact, immediately recognizable photo on operational order cards
+ * and on the delivery sheet. The public sales gallery remains independent.
+ */
+function catalog_order_preview_image(array $catalog, string $slug, ?string $variant): string {
+    $variantImage = catalog_variant_image($catalog, $slug, $variant);
+    $product = $catalog[$slug] ?? null;
+    if (!is_array($product)) return $variantImage;
+
+    foreach ((array) ($product['variants'] ?? []) as $name => $image) {
+        if ((string) $image !== $variantImage) continue;
+        $preview = trim((string) (($product['order_preview_images'] ?? [])[$name] ?? ''));
+        return $preview !== '' ? $preview : $variantImage;
+    }
+
+    return $variantImage;
 }

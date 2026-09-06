@@ -224,17 +224,23 @@ function ensure_closer_schema(): void {
     if ($ready) return;
 
     $pdo = db();
-    // The closer opens this page many times a day on mobile. Avoid taking a DDL
-    // metadata lock on every request once the three required tables exist.
+    $schemaVersion = '20260906_delivery_batches';
+    // The closer opens this page many times a day. The version flag avoids DDL
+    // checks after this migration has been applied once.
     try {
-        $pdo->query('SELECT 1 FROM order_closer_tracking LIMIT 1');
-        $pdo->query('SELECT 1 FROM closer_events LIMIT 1');
-        $pdo->query('SELECT 1 FROM app_settings LIMIT 1');
-        $ready = true;
-        return;
+        $versionStatement = $pdo->prepare("SELECT setting_value FROM app_settings WHERE setting_key = 'closer_schema_version'");
+        $versionStatement->execute();
+        if ((string) $versionStatement->fetchColumn() === $schemaVersion) {
+            $pdo->query('SELECT 1 FROM closer_delivery_batches LIMIT 1');
+            $pdo->query('SELECT 1 FROM closer_delivery_batch_orders LIMIT 1');
+            $statusColumn = $pdo->query("SHOW COLUMNS FROM orders LIKE 'status'")->fetch();
+            if ($statusColumn && str_contains((string) ($statusColumn['Type'] ?? ''), 'Injoignable')) {
+                $ready = true;
+                return;
+            }
+        }
     } catch (PDOException $exception) {
-        // Only a missing table requires the one-time schema creation below.
-        // Connection, lock and permission failures must remain visible to the caller.
+        // Only a missing table requires the idempotent creation below.
         if ((string) $exception->getCode() !== '42S02') throw $exception;
     }
     $pdo->exec(
@@ -270,7 +276,71 @@ function ensure_closer_schema(): void {
             updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
     );
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS closer_delivery_batches (
+            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            closer_identity VARCHAR(50) NOT NULL,
+            draft_owner VARCHAR(50) NULL,
+            delivery_date DATE NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'draft',
+            downloaded_at DATETIME NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_closer_delivery_draft (draft_owner),
+            INDEX idx_closer_delivery_history (closer_identity, status, downloaded_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    );
+    $pdo->exec(
+        "CREATE TABLE IF NOT EXISTS closer_delivery_batch_orders (
+            batch_id BIGINT UNSIGNED NOT NULL,
+            order_id BIGINT UNSIGNED NOT NULL,
+            added_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (batch_id, order_id),
+            UNIQUE KEY uq_closer_delivery_order (order_id),
+            CONSTRAINT fk_closer_delivery_batch FOREIGN KEY (batch_id) REFERENCES closer_delivery_batches(id) ON DELETE CASCADE,
+            CONSTRAINT fk_closer_delivery_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    );
+    $statusColumn = $pdo->query("SHOW COLUMNS FROM orders LIKE 'status'")->fetch();
+    if (!$statusColumn || !str_contains((string) ($statusColumn['Type'] ?? ''), 'Injoignable')) {
+        $pdo->exec(
+            "ALTER TABLE orders MODIFY COLUMN status
+             ENUM('À confirmer','Confirmée','En livraison','Livrée','Annulée','Injoignable')
+             NOT NULL DEFAULT 'À confirmer'"
+        );
+    }
+    $versionStatement = $pdo->prepare(
+        "INSERT INTO app_settings (setting_key, setting_value) VALUES ('closer_schema_version', ?)
+         ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)"
+    );
+    $versionStatement->execute([$schemaVersion]);
     $ready = true;
+}
+
+/** Return the unique open delivery sheet for a closer, creating it if needed. */
+function closer_delivery_draft(PDO $pdo, string $closer, bool $forUpdate = false): array {
+    $lock = $forUpdate ? ' FOR UPDATE' : '';
+    $select = $pdo->prepare("SELECT * FROM closer_delivery_batches WHERE draft_owner = ? AND status = 'draft' LIMIT 1" . $lock);
+    $select->execute([$closer]);
+    $batch = $select->fetch();
+    if ($batch) return $batch;
+
+    $insert = $pdo->prepare(
+        "INSERT INTO closer_delivery_batches (closer_identity, draft_owner, status)
+         VALUES (?, ?, 'draft')
+         ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id), updated_at = updated_at"
+    );
+    $insert->execute([$closer, $closer]);
+    $select->execute([$closer]);
+    $batch = $select->fetch();
+    if (!$batch) throw new RuntimeException('Le bordereau en cours ne peut pas être préparé.');
+    return $batch;
+}
+
+function closer_delivery_order_ids(PDO $pdo, int $batchId): array {
+    $statement = $pdo->prepare('SELECT order_id FROM closer_delivery_batch_orders WHERE batch_id = ? ORDER BY added_at, order_id');
+    $statement->execute([$batchId]);
+    return array_map('intval', $statement->fetchAll(PDO::FETCH_COLUMN));
 }
 
 function closer_safe_error_message(Throwable $exception): string {
@@ -310,25 +380,41 @@ function sync_closer_tracking_for_order_ref(PDO $pdo, string $orderRef): void {
          JOIN orders o ON o.id = t.order_id
          SET t.follow_up_status = CASE
              WHEN o.status = 'Annulée' THEN 'Annulée'
+             WHEN o.status = 'Injoignable' THEN 'Injoignable'
              WHEN o.status = 'Livrée' THEN 'Livrée'
              WHEN o.status IN ('Confirmée', 'En livraison') THEN 'Confirmée'
-             WHEN o.status = 'À confirmer' AND t.follow_up_status IN ('Confirmée', 'Annulée', 'Livrée') THEN 'À appeler'
+             WHEN o.status = 'À confirmer' AND t.follow_up_status IN ('Confirmée', 'Annulée', 'Injoignable', 'Livrée') THEN 'À appeler'
              ELSE t.follow_up_status
          END,
          t.follow_up_at = CASE
-             WHEN o.status IN ('Annulée', 'Livrée') THEN NULL
+             WHEN o.status IN ('Annulée', 'Injoignable', 'Livrée') THEN NULL
              ELSE t.follow_up_at
          END
          WHERE o.order_ref = ?
            AND (
              (o.status = 'Annulée' AND t.follow_up_status <> 'Annulée')
+             OR (o.status = 'Injoignable' AND t.follow_up_status <> 'Injoignable')
              OR (o.status = 'Livrée' AND t.follow_up_status <> 'Livrée')
              OR (o.status IN ('Confirmée', 'En livraison') AND t.follow_up_status <> 'Confirmée')
-             OR (o.status = 'À confirmer' AND t.follow_up_status IN ('Confirmée', 'Annulée', 'Livrée'))
-             OR (o.status IN ('Annulée', 'Livrée') AND t.follow_up_at IS NOT NULL)
+             OR (o.status = 'À confirmer' AND t.follow_up_status IN ('Confirmée', 'Annulée', 'Injoignable', 'Livrée'))
+             OR (o.status IN ('Annulée', 'Injoignable', 'Livrée') AND t.follow_up_at IS NOT NULL)
            )"
     );
     $statement->execute([$orderRef]);
+
+    // A terminal order must not remain inside a draft that has not yet been
+    // downloaded. This keeps the counter and the generated PDF in sync even
+    // when management changes the status from its own interface.
+    $removeFromDraft = $pdo->prepare(
+        "DELETE batch_item
+         FROM closer_delivery_batch_orders batch_item
+         JOIN closer_delivery_batches batch ON batch.id = batch_item.batch_id
+         JOIN orders o ON o.id = batch_item.order_id
+         WHERE o.order_ref = ?
+           AND o.status IN ('Annulée', 'Injoignable', 'Livrée')
+           AND batch.status = 'draft'"
+    );
+    $removeFromDraft->execute([$orderRef]);
 }
 
 function sync_all_closer_tracking(PDO $pdo): void {
@@ -337,22 +423,33 @@ function sync_all_closer_tracking(PDO $pdo): void {
          JOIN orders o ON o.id = t.order_id
          SET t.follow_up_status = CASE
              WHEN o.status = 'Annulée' THEN 'Annulée'
+             WHEN o.status = 'Injoignable' THEN 'Injoignable'
              WHEN o.status = 'Livrée' THEN 'Livrée'
              WHEN o.status IN ('Confirmée', 'En livraison') THEN 'Confirmée'
-             WHEN o.status = 'À confirmer' AND t.follow_up_status IN ('Confirmée', 'Annulée', 'Livrée') THEN 'À appeler'
+             WHEN o.status = 'À confirmer' AND t.follow_up_status IN ('Confirmée', 'Annulée', 'Injoignable', 'Livrée') THEN 'À appeler'
              ELSE t.follow_up_status
          END,
          t.follow_up_at = CASE
-             WHEN o.status IN ('Annulée', 'Livrée') THEN NULL
+             WHEN o.status IN ('Annulée', 'Injoignable', 'Livrée') THEN NULL
              ELSE t.follow_up_at
          END
          WHERE (o.status = 'Annulée' AND t.follow_up_status <> 'Annulée')
+            OR (o.status = 'Injoignable' AND t.follow_up_status <> 'Injoignable')
             OR (o.status = 'Livrée' AND t.follow_up_status <> 'Livrée')
             OR (o.status IN ('Confirmée', 'En livraison') AND t.follow_up_status <> 'Confirmée')
-            OR (o.status = 'À confirmer' AND t.follow_up_status IN ('Confirmée', 'Annulée', 'Livrée'))
-            OR (o.status IN ('Annulée', 'Livrée') AND t.follow_up_at IS NOT NULL)"
+            OR (o.status = 'À confirmer' AND t.follow_up_status IN ('Confirmée', 'Annulée', 'Injoignable', 'Livrée'))
+            OR (o.status IN ('Annulée', 'Injoignable', 'Livrée') AND t.follow_up_at IS NOT NULL)"
     );
     $statement->execute();
+
+    $pdo->exec(
+        "DELETE batch_item
+         FROM closer_delivery_batch_orders batch_item
+         JOIN closer_delivery_batches batch ON batch.id = batch_item.batch_id
+         JOIN orders o ON o.id = batch_item.order_id
+         WHERE o.status IN ('Annulée', 'Injoignable', 'Livrée')
+           AND batch.status = 'draft'"
+    );
 }
 
 // Accounting services are inert until a protected manager route invokes them.

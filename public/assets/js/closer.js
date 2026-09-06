@@ -11,6 +11,10 @@
     }
 
     form.dataset.submitting = 'true';
+    if (form.matches('[data-delivery-download]')) {
+      window.setTimeout(function () { window.location.reload(); }, 1400);
+    }
+
     window.requestAnimationFrame(function () {
       var buttons = form.querySelectorAll('button[type="submit"], input[type="submit"]');
       buttons.forEach(function (button) {

@@ -30,6 +30,10 @@ delivery_test_assert(
     'L’Azur Bleu signature doit utiliser la nouvelle photo Bleu & or.'
 );
 delivery_test_assert(
+    catalog_order_preview_image($catalog, 'azur-squelette', 'Bleu signature') === 'products/azur-bleu-signature-order-preview.jpg',
+    'L’espace closeuse et le bordereau doivent utiliser le nouvel aperçu de l’Azur Bleu signature.'
+);
+delivery_test_assert(
     ($catalog['azur-squelette']['gallery'][0] ?? '') === 'products/azur-bleu-signature-lifestyle.webp',
     'La galerie Azur doit s’ouvrir sur Bleu signature.'
 );
@@ -78,14 +82,14 @@ $orders = [
     ],
     [
         'order_ref' => 'HOR-TEST-002',
-        'customer' => 'Client Azur',
+        'customer' => 'Client Azur Bleu',
         'phone' => '+223 70 00 00 02',
         'district' => 'Bamako',
         'product' => 'Azur Squelette',
-        'variant' => 'Noir squelette',
+        'variant' => 'Bleu signature',
         'quantity' => 1,
         'amount' => '20 000 FCFA',
-        'image' => catalog_variant_image($catalog, 'azur-squelette', 'Noir squelette'),
+        'image' => catalog_order_preview_image($catalog, 'azur-squelette', 'Bleu signature'),
     ],
 ];
 $pdf = delivery_sheet_pdf($orders, '2026-09-05', __DIR__ . '/../public');

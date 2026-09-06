@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS orders (
   variant VARCHAR(120) NOT NULL,
   quantity SMALLINT UNSIGNED NOT NULL,
   unit_price_fcfa INT UNSIGNED NOT NULL,
-  status ENUM('À confirmer','Confirmée','En livraison','Livrée','Annulée') NOT NULL DEFAULT 'À confirmer',
+  status ENUM('À confirmer','Confirmée','En livraison','Livrée','Annulée','Injoignable') NOT NULL DEFAULT 'À confirmer',
   acquisition_channel ENUM('Meta','Réachat') NULL,
   stock_processed TINYINT(1) NOT NULL DEFAULT 0,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -132,6 +132,29 @@ CREATE TABLE IF NOT EXISTS app_settings (
   setting_key VARCHAR(80) NOT NULL PRIMARY KEY,
   setting_value VARCHAR(255) NULL,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS closer_delivery_batches (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  closer_identity VARCHAR(50) NOT NULL,
+  draft_owner VARCHAR(50) NULL,
+  delivery_date DATE NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'draft',
+  downloaded_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_closer_delivery_draft (draft_owner),
+  INDEX idx_closer_delivery_history (closer_identity, status, downloaded_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS closer_delivery_batch_orders (
+  batch_id BIGINT UNSIGNED NOT NULL,
+  order_id BIGINT UNSIGNED NOT NULL,
+  added_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (batch_id, order_id),
+  UNIQUE KEY uq_closer_delivery_order (order_id),
+  CONSTRAINT fk_closer_delivery_batch FOREIGN KEY (batch_id) REFERENCES closer_delivery_batches(id) ON DELETE CASCADE,
+  CONSTRAINT fk_closer_delivery_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT IGNORE INTO products (id, slug, sku, name, price_fcfa) VALUES

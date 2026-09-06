@@ -14,8 +14,8 @@ $closerPath = $_SERVER['SCRIPT_NAME'] ?? '';
   <link rel="icon" type="image/png" sizes="48x48" href="<?= e(url('/favicon-48.png')) ?>">
   <link rel="stylesheet" href="<?= e(url('/assets/css/app.css')) ?>">
   <link rel="stylesheet" href="<?= e(url('/assets/css/brand.css')) ?>">
-  <link rel="stylesheet" href="<?= e(url('/assets/css/closer.css')) ?>">
-  <script src="<?= e(url('/assets/js/closer.js')) ?>" defer></script>
+  <link rel="stylesheet" href="<?= e(url('/assets/css/closer.css')) ?>?v=20260906-pdf-selection">
+  <script src="<?= e(url('/assets/js/closer.js')) ?>?v=20260906-pdf-selection" defer></script>
 </head>
 <body class="closer-body">
   <header class="closer-top">

@@ -25,8 +25,8 @@ $activeCount = (int) $pdo->query(
     "SELECT COUNT(*)
      FROM order_closer_tracking t
      JOIN orders o ON o.id = t.order_id
-     WHERE t.follow_up_status IN ('À appeler', 'À rappeler', 'Injoignable')
-       AND o.status NOT IN ('Annulée', 'Livrée')"
+     WHERE t.follow_up_status IN ('À appeler', 'À rappeler')
+       AND o.status NOT IN ('Annulée', 'Injoignable', 'Livrée')"
 )->fetchColumn();
 $confirmedStatement = $pdo->prepare("SELECT COUNT(*) FROM order_closer_tracking WHERE follow_up_status = 'Confirmée' AND DATE(updated_at) = ?");
 $confirmedStatement->execute([$today]);
@@ -55,7 +55,7 @@ require APP_ROOT . '/templates/admin-header.php';
 </header>
 
 <section class="metric-grid closer-admin-metrics">
-  <article class="metric"><span>À suivre</span><strong><?= $activeCount ?></strong><small>appels, rappels ou numéros injoignables</small></article>
+  <article class="metric"><span>À suivre</span><strong><?= $activeCount ?></strong><small>appels et rappels encore actifs</small></article>
   <article class="metric"><span>Confirmées aujourd’hui</span><strong><?= $confirmedToday ?></strong><small>commandes passées au statut confirmée</small></article>
   <article class="metric"><span>WhatsApp préparés</span><strong><?= $whatsappToday ?></strong><small>messages livreur prêts aujourd’hui</small></article>
 </section>
