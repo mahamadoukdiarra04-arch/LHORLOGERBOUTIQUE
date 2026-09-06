@@ -18,6 +18,10 @@ function catalog(): array {
             'story' => 'Une mécanique qui se remarque.', 'movement' => 'Mécanique visible', 'waterproof' => '30 m',
             'gallery' => ['products/azur-bleu-signature-lifestyle.webp','products/azur-squelette-lifestyle.jpg','products/azur-squelette-portrait.jpg','products/azur-bleu-signature-waterproof.webp','products/azur-bleu-signature-back.webp','products/azur-bleu-signature-closeup.webp'],
             'variants' => ['Bleu signature' => 'products/azur-bleu-signature-lifestyle.webp', 'Or squelette' => 'products/variants/azur-or-squelette.jpg', 'Noir squelette' => 'products/variants/azur-noir-squelette.jpg'],
+            'variant_galleries' => [
+                'Bleu signature' => ['products/azur-bleu-signature-lifestyle.webp','products/azur-squelette-lifestyle.jpg','products/azur-squelette-portrait.jpg','products/azur-bleu-signature-waterproof.webp','products/azur-bleu-signature-back.webp','products/azur-bleu-signature-closeup.webp'],
+                'Noir squelette' => ['products/variants/azur-noir-squelette.jpg','products/azur-noir-squelette-wrist.webp','products/azur-noir-squelette-front.webp','products/azur-noir-squelette-back.webp','products/azur-noir-squelette-angle.webp'],
+            ],
             'specs' => ['Diamètre du cadran' => '46 mm', 'Épaisseur' => '11 mm', 'Mouvement' => 'Mécanique', 'Boîtier' => 'Octogonal à facettes', 'Cadran' => 'Squelette bleu & or', 'Fond' => 'Transparent', 'Étanchéité annoncée' => '30 m', 'Fermoir' => 'Boucle déployante, acier inoxydable'],
             'features' => [['Le mouvement à ciel ouvert', 'Le cadran squelette laisse apparaître les rouages et le balancier.'], ['Un boîtier qui accroche la lumière', 'Les facettes octogonales, le bleu intense et les touches métalliques apportent du relief.'], ['Pensée sous tous les angles', 'Fond transparent, couronne vissée et boucle déployante complètent la construction.']],
         ],

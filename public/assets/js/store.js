@@ -29,11 +29,43 @@
     main.alt = alt;
   };
 
-  update();
-  document.querySelectorAll('[data-gallery-thumb]').forEach((button) => button.addEventListener('click', () => {
+  const bindGalleryThumb = (button) => button.addEventListener('click', () => {
     setGalleryMain(button.dataset.galleryThumb, button.dataset.galleryAlt);
-  }));
+  });
+
+  const setGallery = (sources, alt = '') => {
+    const gallery = document.querySelector('[data-gallery-thumbs]');
+    const uniqueSources = [...new Set(sources.filter((source) => typeof source === 'string' && source))];
+    if (!uniqueSources.length) return;
+
+    setGalleryMain(uniqueSources[0], alt);
+    if (!gallery) return;
+
+    const fragment = document.createDocumentFragment();
+    uniqueSources.forEach((source, index) => {
+      const button = document.createElement('button');
+      const image = document.createElement('img');
+      button.type = 'button';
+      button.dataset.galleryThumb = source;
+      button.dataset.galleryAlt = `${alt}, vue ${index + 1}`;
+      button.setAttribute('aria-label', `Afficher la vue ${index + 1}`);
+      image.src = source;
+      image.alt = '';
+      image.loading = 'lazy';
+      button.append(image);
+      bindGalleryThumb(button);
+      fragment.append(button);
+    });
+    gallery.replaceChildren(fragment);
+  };
+
+  update();
+  document.querySelectorAll('[data-gallery-thumb]').forEach(bindGalleryThumb);
   document.querySelectorAll('[data-variant-image]').forEach((input) => input.addEventListener('change', () => {
-    if (input.checked) setGalleryMain(input.dataset.variantImage, input.dataset.variantAlt);
+    if (!input.checked) return;
+    let gallery = [];
+    try { gallery = JSON.parse(input.dataset.variantGallery || '[]'); }
+    catch { gallery = []; }
+    setGallery(Array.isArray(gallery) && gallery.length ? gallery : [input.dataset.variantImage], input.dataset.variantAlt);
   }));
 })();

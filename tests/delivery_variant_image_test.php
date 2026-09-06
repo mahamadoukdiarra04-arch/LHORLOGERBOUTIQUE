@@ -48,6 +48,21 @@ foreach ($catalog['azur-squelette']['gallery'] as $imagePath) {
         'Chaque visuel de la galerie Azur doit exister : ' . $imagePath
     );
 }
+$blackGallery = $catalog['azur-squelette']['variant_galleries']['Noir squelette'] ?? [];
+delivery_test_assert(
+    count($blackGallery) === 5,
+    'La galerie Noir squelette doit conserver sa photo principale et intégrer les quatre nouvelles vues.'
+);
+delivery_test_assert(
+    ($blackGallery[0] ?? '') === 'products/variants/azur-noir-squelette.jpg',
+    'La photo principale historique de la Noir squelette doit rester la première vue.'
+);
+foreach ($blackGallery as $imagePath) {
+    delivery_test_assert(
+        is_file(__DIR__ . '/../public/' . $imagePath),
+        'Chaque visuel de la galerie Noir squelette doit exister : ' . $imagePath
+    );
+}
 
 $orders = [
     [
