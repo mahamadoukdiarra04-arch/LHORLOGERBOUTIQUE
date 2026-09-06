@@ -29,9 +29,10 @@ closer_batch_assert(
 );
 closer_batch_assert(
     str_contains($download, "SET status = 'downloaded', draft_owner = NULL")
+        && str_contains($download, "SET status = 'En livraison'")
         && str_contains($download, "batch.status = 'draft'")
         && !str_contains($download, "order_ids"),
-    'Un téléchargement doit clôturer le brouillon courant avant le suivant.'
+    'Un téléchargement doit passer les commandes en livraison et clôturer le brouillon courant avant le suivant.'
 );
 closer_batch_assert(
     str_contains($management, "'Injoignable'")

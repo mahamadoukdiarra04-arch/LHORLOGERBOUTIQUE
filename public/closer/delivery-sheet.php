@@ -51,7 +51,8 @@ try {
            AND o.status = 'Confirmée'
            AND batch.id = ?
            AND batch.status = 'draft'
-         ORDER BY o.created_at ASC"
+         ORDER BY o.created_at ASC
+         FOR UPDATE"
     );
     $statement->execute([admin_identity(), $batchId]);
     $rows = $statement->fetchAll();
@@ -74,6 +75,19 @@ try {
     }, $rows);
     $pdf = delivery_sheet_pdf($orders, $date, dirname(APP_ROOT) . '/public');
 
+    $orderIds = array_map(static fn(array $row): int => (int) $row['id'], $rows);
+    $placeholders = implode(',', array_fill(0, count($orderIds), '?'));
+    $markInDelivery = $pdo->prepare(
+        "UPDATE orders
+         SET status = 'En livraison'
+         WHERE status = 'Confirmée'
+           AND id IN ($placeholders)"
+    );
+    $markInDelivery->execute($orderIds);
+    if ($markInDelivery->rowCount() !== count($orderIds)) {
+        throw new RuntimeException('Le statut des commandes du bordereau n’a pas pu être mis à jour. Rechargez la page.');
+    }
+
     $closeBatch = $pdo->prepare(
         "UPDATE closer_delivery_batches
          SET status = 'downloaded', draft_owner = NULL, delivery_date = ?, downloaded_at = NOW()
@@ -82,7 +96,9 @@ try {
     $closeBatch->execute([$date, $batchId]);
     if ($closeBatch->rowCount() !== 1) throw new RuntimeException('Le bordereau n’a pas pu être clôturé. Rechargez la page.');
     foreach ($rows as $row) {
-        log_closer_event((int) $row['id'], 'Bordereau téléchargé', 'Commande incluse dans le bordereau du ' . date('d/m/Y', strtotime($date)) . '.');
+        sync_closer_tracking_for_order_ref($pdo, (string) $row['order_ref']);
+        log_closer_event((int) $row['id'], 'Bordereau téléchargé', 'Commande passée en livraison et incluse dans le bordereau du ' . date('d/m/Y', strtotime($date)) . '.');
+        log_event('commande', 'Commande ' . $row['order_ref'] . ' passée en livraison depuis le bordereau closeuse', (int) $row['product_id'], (int) $row['id']);
     }
     $pdo->commit();
 } catch (Throwable $exception) {
