@@ -4,6 +4,7 @@ require_closer();
 require_once APP_ROOT . '/catalog.php';
 try {
     ensure_closer_schema();
+    ensure_accounting_schema();
     $pdo = db();
 } catch (Throwable $exception) {
     error_log('L’Horloger: espace closeuse temporairement indisponible.');
@@ -97,6 +98,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('success', 'Commande ajoutée à votre suivi.');
         } elseif (!$tracking || $tracking['closer_identity'] !== $closer) {
             throw new RuntimeException('Ajoutez d’abord cette commande à votre suivi.');
+        } elseif ($action === 'edit_order') {
+            if (!in_array($order['status'], ['À confirmer', 'Confirmée'], true)) {
+                throw new RuntimeException('Cette commande ne peut plus être modifiée à cette étape.');
+            }
+            $result = accounting_update_order_before_payment($pdo, $orderId, $_POST, accounting_current_user_id());
+            $resetPreparedMessage = $pdo->prepare(
+                'UPDATE order_closer_tracking t
+                 JOIN orders o ON o.id = t.order_id
+                 SET t.whatsapp_prepared_at = NULL, t.whatsapp_sent_at = NULL
+                 WHERE o.order_ref = ?'
+            );
+            $resetPreparedMessage->execute([$order['order_ref']]);
+            log_closer_event($orderId, 'Commande modifiée', 'Coordonnées ou contenu de la commande corrigés avant livraison.');
+            $pdo->commit();
+            flash('success', 'Commande ' . $result['order_ref'] . ' modifiée. Vérifiez puis préparez le message du livreur.');
         } elseif ($action === 'update_follow_up') {
             if (in_array($order['status'], ['Annulée', 'En livraison', 'Livrée'], true)) {
                 throw new RuntimeException('Cette commande est déjà ' . strtolower((string) $order['status']) . ' et a été retirée de votre suivi actif.');
@@ -255,6 +271,14 @@ $myOrdersStatement = $pdo->prepare(
 );
 $myOrdersStatement->execute([$closer]);
 $myOrders = $myOrdersStatement->fetchAll();
+$orderEditCatalog = accounting_order_edit_catalog($pdo);
+$orderEditability = [];
+foreach ($myOrders as $candidate) {
+    $candidateRef = (string) $candidate['order_ref'];
+    if (!array_key_exists($candidateRef, $orderEditability)) {
+        $orderEditability[$candidateRef] = accounting_order_editability($pdo, $candidateRef);
+    }
+}
 $historyStatement = $pdo->prepare(
     "SELECT e.*, o.order_ref, o.customer_first_name, o.customer_last_name
      FROM closer_events e JOIN orders o ON o.id = e.order_id
@@ -312,12 +336,35 @@ require APP_ROOT . '/templates/closer-header.php';
     <div class="closer-panel__head"><div><h2>Mon suivi</h2><p>Confirmez la commande, préparez son message illustré puis partagez-le au livreur. Après l’envoi, elle passe automatiquement en livraison et quitte cette liste.</p></div></div>
     <?php if (!$courierReady): ?><p class="closer-warning">Le numéro WhatsApp du livreur n’est pas encore renseigné. La gestion peut l’ajouter dans « Suivi closeuse ».</p><?php endif; ?>
     <div class="closer-orders">
-      <?php foreach ($myOrders as $order): $confirmed = $order['follow_up_status'] === 'Confirmée'; $isFollowUp = $order['follow_up_status'] === 'À rappeler'; ?>
+      <?php foreach ($myOrders as $order): $confirmed = $order['follow_up_status'] === 'Confirmée'; $isFollowUp = $order['follow_up_status'] === 'À rappeler'; $canEdit = (bool) ($orderEditability[(string) $order['order_ref']]['editable'] ?? false); ?>
         <article class="closer-order">
           <img class="closer-order__image" src="<?= e(url('/' . closer_image($order, $catalog))) ?>" alt="<?= e($order['product_name'] . ' · ' . $order['variant']) ?>">
           <div class="closer-order__content">
             <div class="closer-order__top"><div><h3><?= e($order['customer_first_name'] . ' ' . $order['customer_last_name']) ?></h3><p><?= e($order['order_ref']) ?> · <?= e($order['product_name']) ?></p><time class="closer-order-time" datetime="<?= e((string) $order['created_at']) ?>">Commandée le <?= e(closer_order_time((string) $order['created_at'])) ?></time></div><span class="closer-pill <?= $confirmed ? 'is-confirmed' : ($isFollowUp ? 'is-followup' : '') ?>"><?= e($order['follow_up_status']) ?></span></div>
             <div class="closer-order__facts"><span><b><?= e($order['variant']) ?></b> · Qté <?= (int) $order['quantity'] ?></span><span><a href="tel:<?= e($order['phone']) ?>"><b><?= e($order['phone']) ?></b></a></span><span><?= e($order['district']) ?></span><span><b><?= money((int) $order['quantity'] * (int) $order['unit_price_fcfa']) ?></b></span></div>
+            <?php if ($canEdit): $currentVariants = $orderEditCatalog[(int) $order['product_id']]['variants'] ?? []; ?>
+              <button class="closer-edit-toggle" type="button" aria-expanded="false" aria-controls="closer-edit-<?= (int) $order['id'] ?>" data-closer-edit-toggle>Modifier la commande</button>
+              <section class="closer-edit-panel" id="closer-edit-<?= (int) $order['id'] ?>" hidden>
+                <div class="closer-edit-panel__head"><strong>Modifier la commande</strong><span>Les changements seront aussi visibles côté gestion.</span></div>
+                <form class="closer-edit-form" method="post" data-closer-order-edit-form>
+                  <?= csrf_field() ?><input type="hidden" name="action" value="edit_order"><input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>">
+                  <fieldset><legend>Client et livraison</legend><div class="closer-edit-fields">
+                    <label>Prénom<input name="customer_first_name" value="<?= e($order['customer_first_name']) ?>" maxlength="100" required></label>
+                    <label>Nom<input name="customer_last_name" value="<?= e($order['customer_last_name']) ?>" maxlength="100" required></label>
+                    <label>Téléphone<input name="phone" value="<?= e($order['phone']) ?>" maxlength="32" inputmode="tel" required></label>
+                    <label>Quartier<input name="district" value="<?= e($order['district']) ?>" maxlength="150" required></label>
+                  </div></fieldset>
+                  <fieldset><legend>Montre commandée</legend><div class="closer-edit-fields">
+                    <label>Produit<select name="product_id" data-closer-edit-product required><?php foreach ($orderEditCatalog as $product): ?><option value="<?= (int) $product['id'] ?>" data-price="<?= (int) $product['price_fcfa'] ?>" <?= (int) $order['product_id'] === (int) $product['id'] ? 'selected' : '' ?>><?= e($product['name']) ?></option><?php endforeach; ?></select></label>
+                    <label>Couleur<select name="variant_id" data-closer-edit-variant required><?php foreach ($currentVariants as $variant): ?><option value="<?= (int) $variant['id'] ?>" <?= ((int) ($order['variant_id'] ?? 0) === (int) $variant['id'] || ((int) ($order['variant_id'] ?? 0) === 0 && $order['variant'] === $variant['name'])) ? 'selected' : '' ?>><?= e($variant['name']) ?></option><?php endforeach; ?></select></label>
+                    <label>Quantité<input type="number" name="quantity" value="<?= (int) $order['quantity'] ?>" min="1" max="100" inputmode="numeric" required></label>
+                    <label>Prix unitaire FCFA<input type="number" name="unit_price_fcfa" value="<?= (int) $order['unit_price_fcfa'] ?>" min="1" max="100000000" inputmode="numeric" data-closer-edit-price required></label>
+                  </div></fieldset>
+                  <div class="closer-edit-total"><span>Nouveau total</span><strong data-closer-edit-total><?= money((int) $order['quantity'] * (int) $order['unit_price_fcfa']) ?></strong></div>
+                  <div class="closer-edit-actions"><button class="closer-button" type="submit">Enregistrer les modifications</button><button class="closer-button secondary" type="button" data-closer-edit-cancel>Annuler</button></div>
+                </form>
+              </section>
+            <?php endif; ?>
             <form class="closer-form" method="post">
               <?= csrf_field() ?><input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>"><input type="hidden" name="action" value="update_follow_up">
               <label>Résultat<select name="follow_up_status"><?php foreach ($trackingStates as $state): ?><option value="<?= e($state) ?>" <?= $order['follow_up_status'] === $state ? 'selected' : '' ?>><?= e($state) ?></option><?php endforeach; ?></select></label>
@@ -378,4 +425,5 @@ require APP_ROOT . '/templates/closer-header.php';
   <aside class="closer-panel closer-panel--history"><div class="closer-panel__head"><div><h2>Mon historique</h2><p>Vos dernières actions.</p></div></div><ul class="closer-history"><?php foreach ($history as $event): ?><li><strong><?= e($event['event_type']) ?> · <?= e($event['order_ref']) ?></strong><span><?= e($event['customer_first_name'] . ' ' . $event['customer_last_name']) ?> · <?= e(date('d/m/Y H:i', strtotime($event['created_at']))) ?><?= $event['note'] ? ' · ' . e($event['note']) : '' ?></span></li><?php endforeach; ?><?php if (!$history): ?><li><span>Aucune action enregistrée.</span></li><?php endif; ?></ul></aside>
   </div>
 </div>
+<script id="closer-order-edit-catalog" type="application/json"><?= json_encode(array_values($orderEditCatalog), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
 <?php require APP_ROOT . '/templates/closer-footer.php'; ?>

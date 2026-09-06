@@ -78,6 +78,50 @@
     return canvasBlob(canvas);
   }
 
+  function setupOrderEditing() {
+    var source = document.getElementById('closer-order-edit-catalog');
+    if (!source) return;
+    var products;
+    try {
+      products = JSON.parse(source.textContent || '[]');
+    } catch (_) {
+      return;
+    }
+    var money = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 });
+
+    document.querySelectorAll('[data-closer-order-edit-form]').forEach(function (form) {
+      var productSelect = form.querySelector('[data-closer-edit-product]');
+      var variantSelect = form.querySelector('[data-closer-edit-variant]');
+      var quantityInput = form.querySelector('[name="quantity"]');
+      var priceInput = form.querySelector('[data-closer-edit-price]');
+      var total = form.querySelector('[data-closer-edit-total]');
+      if (!productSelect || !variantSelect || !quantityInput || !priceInput || !total) return;
+
+      function updateTotal() {
+        var quantity = Math.max(0, parseInt(quantityInput.value || '0', 10) || 0);
+        var price = Math.max(0, parseInt(priceInput.value || '0', 10) || 0);
+        total.textContent = money.format(quantity * price).replace(/\u202f/g, ' ') + ' FCFA';
+      }
+
+      productSelect.addEventListener('change', function () {
+        var product = products.find(function (item) { return String(item.id) === productSelect.value; });
+        variantSelect.replaceChildren();
+        if (!product) return;
+        (product.variants || []).forEach(function (variant) {
+          var option = document.createElement('option');
+          option.value = String(variant.id);
+          option.textContent = variant.name;
+          variantSelect.append(option);
+        });
+        priceInput.value = String(product.price_fcfa || '');
+        updateTotal();
+      });
+      quantityInput.addEventListener('input', updateTotal);
+      priceInput.addEventListener('input', updateTotal);
+      updateTotal();
+    });
+  }
+
   function setShareStatus(form, message, isError) {
     var status = form.querySelector('[data-share-status]');
     if (!status) return;
@@ -91,7 +135,38 @@
     setShareStatus(form, 'Après l’envoi dans WhatsApp, confirmez ci-dessous pour passer la commande en livraison.', false);
   }
 
+  setupOrderEditing();
+
   document.addEventListener('click', async function (event) {
+    var editToggle = event.target.closest('[data-closer-edit-toggle]');
+    if (editToggle) {
+      var editPanel = document.getElementById(editToggle.getAttribute('aria-controls'));
+      if (!editPanel) return;
+      var willOpen = editPanel.hidden;
+      editPanel.hidden = !willOpen;
+      editToggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+      editToggle.lastChild.textContent = willOpen ? ' Fermer la modification' : ' Modifier la commande';
+      if (willOpen) {
+        var firstField = editPanel.querySelector('input:not([type="hidden"]), select');
+        if (firstField) firstField.focus({ preventScroll: true });
+      }
+      return;
+    }
+
+    var editCancel = event.target.closest('[data-closer-edit-cancel]');
+    if (editCancel) {
+      var cancelPanel = editCancel.closest('.closer-edit-panel');
+      var cancelCard = editCancel.closest('.closer-order');
+      var cancelToggle = cancelCard ? cancelCard.querySelector('[data-closer-edit-toggle]') : null;
+      if (cancelPanel) cancelPanel.hidden = true;
+      if (cancelToggle) {
+        cancelToggle.setAttribute('aria-expanded', 'false');
+        cancelToggle.lastChild.textContent = ' Modifier la commande';
+        cancelToggle.focus();
+      }
+      return;
+    }
+
     var fallbackLink = event.target.closest('[data-whatsapp-fallback-link]');
     if (fallbackLink) {
       var fallbackForm = fallbackLink.closest('[data-whatsapp-send-form]');

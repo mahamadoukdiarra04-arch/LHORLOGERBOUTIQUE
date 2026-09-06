@@ -4,7 +4,7 @@ L’espace de travail de la closeuse est disponible à l’URL `/closer/`. Il es
 
 Un gestionnaire crée son accès depuis **Administration → Utilisateurs**. Il renseigne un identifiant, un mot de passe et le rôle **Closeuse**. Le même écran permet de modifier le compte ou de le suspendre sans toucher aux fichiers du site.
 
-Elle pourra alors prendre une commande dans son suivi, noter le résultat de l’appel, confirmer avec le canal Meta ou Réachat, puis préparer et partager au livreur une fiche illustrée. La fiche contient la photo exacte de la montre, sa couleur, les coordonnées du client et le prix à encaisser très visible.
+Elle pourra alors prendre une commande dans son suivi, corriger au besoin les coordonnées ou le contenu grâce au bouton **Modifier la commande**, noter le résultat de l’appel, confirmer avec le canal Meta ou Réachat, puis préparer et partager au livreur une fiche illustrée. La fiche contient la photo exacte de la montre, sa couleur, les coordonnées du client et le prix à encaisser très visible.
 
 Le numéro WhatsApp du livreur se renseigne depuis **Administration → Suivi closeuse**. Utilisez le format international, sans espace (par exemple `223XXXXXXXX`).
 
