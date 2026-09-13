@@ -9,6 +9,7 @@ const ACCOUNTING_STOCK_EFFECTIVE_VERSION = '20260828_stock_effective_at';
 const ACCOUNTING_DELIVERY_EXPENSE_CATEGORY_VERSION = '20260828_delivery_expense_category';
 const ACCOUNTING_ORDER_EDIT_VERSION = '20260901_order_edit';
 const ACCOUNTING_DELIVERY_SHOP_SCOPE_VERSION = '20260902_delivery_shop_scope';
+const ACCOUNTING_CATALOG_VARIANTS_VERSION = '20260913_catalog_variants';
 
 /**
  * The accounting foundation is deliberately initialized from PHP as well as
@@ -88,6 +89,13 @@ function ensure_accounting_schema(): void {
             accounting_make_delivery_a_shop_expense($pdo);
             $mark = $pdo->prepare('INSERT INTO accounting_schema_migrations (version) VALUES (?)');
             $mark->execute([ACCOUNTING_DELIVERY_SHOP_SCOPE_VERSION]);
+        }
+        $catalogVariantsApplied = $pdo->prepare('SELECT 1 FROM accounting_schema_migrations WHERE version = ?');
+        $catalogVariantsApplied->execute([ACCOUNTING_CATALOG_VARIANTS_VERSION]);
+        if (!$catalogVariantsApplied->fetchColumn()) {
+            accounting_seed_product_variants($pdo);
+            $mark = $pdo->prepare('INSERT INTO accounting_schema_migrations (version) VALUES (?)');
+            $mark->execute([ACCOUNTING_CATALOG_VARIANTS_VERSION]);
         }
         $ready = true;
     } finally {
