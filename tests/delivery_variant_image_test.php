@@ -19,6 +19,26 @@ foreach ($catalog['nocturne-chrono']['gallery'] ?? [] as $imagePath) {
         'La galerie Nocturne ne doit plus montrer un coloris retiré : ' . $imagePath
     );
 }
+$brownGallery = $catalog['nocturne-chrono']['variant_galleries']['Noir & brun'] ?? [];
+delivery_test_assert(
+    count($brownGallery) === 11,
+    'La galerie Nocturne Noir & brun doit réunir la photo principale et les dix nouvelles vues.'
+);
+delivery_test_assert(
+    ($catalog['nocturne-chrono']['gallery'] ?? []) === $brownGallery,
+    'La fiche Nocturne doit s’ouvrir sur la galerie Noir & brun, première couleur proposée.'
+);
+$intenseGallery = $catalog['nocturne-chrono']['variant_galleries']['Noir intense'] ?? [];
+delivery_test_assert(
+    count($intenseGallery) === 4,
+    'La galerie Nocturne Noir intense doit réunir la photo principale et les trois vues distinctes.'
+);
+foreach (array_merge($brownGallery, $intenseGallery) as $imagePath) {
+    delivery_test_assert(
+        is_file(__DIR__ . '/../public/' . $imagePath),
+        'Chaque visuel de la galerie Nocturne doit exister : ' . $imagePath
+    );
+}
 delivery_test_assert(
     catalog_variant_image($catalog, 'nocturne-chrono', 'Noir & brun') === 'products/variants/nocturne-noir-brun.jpg',
     'La Nocturne Noir & brun doit utiliser sa photo exacte.'
