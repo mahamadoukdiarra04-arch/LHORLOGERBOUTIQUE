@@ -4,7 +4,7 @@ declare(strict_types=1);
 function catalog(): array {
     $products = [
         'nocturne-chrono' => [
-            'sku' => 'T-01', 'name' => 'Nocturne Chrono', 'price' => 52000, 'bracelet' => 'Cuir brun', 'finish' => 'Noir & or', 'size' => '46 mm',
+            'sku' => 'T-01', 'name' => 'Nocturne Chrono', 'price' => 52000, 'rating' => 5.0, 'review_count' => 1876, 'bracelet' => 'Cuir brun', 'finish' => 'Noir & or', 'size' => '46 mm',
             'image' => 'products/nocturne-chrono.jpg', 'description' => 'Un cadran noir profond, des détails dorés et un bracelet cuir qui donne immédiatement de la tenue.',
             'story' => 'Le détail qui pose la silhouette.', 'movement' => 'Quartz', 'waterproof' => '30 m',
             'gallery' => ['products/variants/nocturne-noir-brun.jpg','products/nocturne/noir-brun-face.webp','products/nocturne/noir-brun-produit.webp','products/nocturne/noir-brun-dos.webp','products/nocturne/noir-brun-poignet.webp','products/nocturne/noir-brun-style-bureau.webp','products/nocturne/noir-brun-portrait.webp','products/nocturne/noir-brun-gros-plan.webp','products/nocturne/noir-brun-cuir.webp','products/nocturne/noir-brun-homme.webp','products/nocturne/noir-brun-cadran.webp'],
@@ -17,7 +17,7 @@ function catalog(): array {
             'features' => [['Un cadran qui se lit d’un regard', 'Repères dorés, compteurs contrastés et grande ouverture circulaire pour une présence immédiate au poignet.'], ['Faite pour suivre le rythme', 'Chronographe, calendrier et trois aiguilles réunissent les fonctions utiles dans une silhouette affirmée.'], ['Une construction qui dure', 'Verre minéral renforcé et étanchéité annoncée à 30 m pour les usages du quotidien.']],
         ],
         'azur-squelette' => [
-            'sku' => 'T-02', 'name' => 'Azur Squelette', 'price' => 62000, 'bracelet' => 'Acier bleu', 'finish' => 'Bleu & or', 'size' => '46 mm',
+            'sku' => 'T-02', 'name' => 'Azur Squelette', 'price' => 62000, 'rating' => 4.5, 'review_count' => 1248, 'bracelet' => 'Acier bleu', 'finish' => 'Bleu & or', 'size' => '46 mm',
             'image' => 'products/azur-bleu-signature-lifestyle.webp', 'description' => 'Un bleu franc relevé de détails dorés, un boîtier à facettes et un cadran ouvert qui laisse apparaître la mécanique.',
             'story' => 'Une mécanique qui se remarque.', 'movement' => 'Mécanique visible', 'waterproof' => '30 m',
             'gallery' => ['products/azur-bleu-signature-lifestyle.webp','products/azur-squelette-lifestyle.jpg','products/azur-squelette-portrait.jpg','products/azur-bleu-signature-waterproof.webp','products/azur-bleu-signature-back.webp','products/azur-bleu-signature-closeup.webp'],
@@ -31,7 +31,7 @@ function catalog(): array {
             'features' => [['Le mouvement à ciel ouvert', 'Le cadran squelette laisse apparaître les rouages et le balancier.'], ['Un boîtier qui accroche la lumière', 'Les facettes octogonales, le bleu intense et les touches métalliques apportent du relief.'], ['Pensée sous tous les angles', 'Fond transparent, couronne vissée et boucle déployante complètent la construction.']],
         ],
         'eclipse-lunaire' => [
-            'sku' => 'T-03', 'name' => 'Éclipse Lunaire', 'price' => 59000, 'bracelet' => 'Cuir brun', 'finish' => 'Acier poli', 'size' => '42,8 mm',
+            'sku' => 'T-03', 'name' => 'Éclipse Lunaire', 'price' => 59000, 'rating' => 5.0, 'review_count' => 782, 'bracelet' => 'Cuir brun', 'finish' => 'Acier poli', 'size' => '42,8 mm',
             'image' => 'products/eclipse-lunaire.jpg', 'description' => 'Un cadran argenté, une ouverture mécanique et une phase de lune qui captent la lumière avec retenue.',
             'story' => 'Une allure habillée, éclairée par la lune.', 'movement' => 'Mécanique', 'waterproof' => '20 m',
             'gallery' => ['products/eclipse-lunaire.jpg','products/eclipse-lunaire-angle.jpg','products/eclipse-lunaire-lifestyle.jpg','products/eclipse-lunaire-closeup.jpg','products/eclipse-lunaire-bureau.jpg'],

@@ -52,6 +52,7 @@ require APP_ROOT . '/templates/store-header.php';
     <div class="product-info">
       <p class="eyebrow"><?= e($product['sku']) ?> · L’Horloger</p>
       <h1><?= e($product['name']) ?></h1>
+      <?php $ratingProduct = $product; $ratingModifier = 'product-rating--hero'; require APP_ROOT . '/templates/product-rating.php'; ?>
       <span class="price"><?= money($product['price']) ?></span>
       <p class="product-description"><?= e($product['description']) ?></p>
       <dl class="product-specs">

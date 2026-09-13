@@ -30,6 +30,48 @@ img {
   display: none;
 }
 
+.product-rating {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.rating-stars {
+  position: relative;
+  display: inline-block;
+  color: #d8d0c4;
+  font-size: 14px;
+  letter-spacing: .08em;
+  white-space: nowrap;
+}
+
+.rating-stars::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--rating-percent);
+  overflow: hidden;
+  color: var(--gold);
+  content: "★★★★★";
+  white-space: nowrap;
+}
+
+.product-rating--card {
+  margin: -5px 0 17px;
+}
+
+.product-rating--hero {
+  margin: 0 0 2px;
+  font-size: 12px;
+}
+
+.product-rating--hero .rating-stars {
+  font-size: 16px;
+}
+
 .variant-list {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   column-gap: 9px;
@@ -60,18 +102,19 @@ img {
 
   .product-info > .eyebrow { order: 0; }
   .product-info > h1 { order: 1; }
-  .product-info > .price { order: 2; }
-  .product-info > .product-description { order: 5; }
-  .product-info > .product-specs { order: 6; }
+  .product-info > .product-rating { order: 2; }
+  .product-info > .price { order: 3; }
+  .product-info > .product-description { order: 6; }
+  .product-info > .product-specs { order: 7; }
   .product-info form { display: contents; }
 
   .product-info .variant-list {
-    order: 3;
+    order: 4;
     margin: 14px 0 20px;
   }
 
   .product-info .button {
-    order: 4;
+    order: 5;
     width: 100%;
     margin-top: 2px;
   }
@@ -208,7 +251,7 @@ img {
 
   .product-info .selected-variant {
     display: block;
-    order: 3;
+    order: 4;
     margin: 0 0 10px;
     color: var(--muted);
     font-size: 12px;
@@ -221,6 +264,10 @@ img {
   .product-info .price {
     margin: 8px 0 9px;
     font-size: 29px;
+  }
+
+  .product-rating--hero {
+    margin-bottom: 2px;
   }
 
   .variant-choice {

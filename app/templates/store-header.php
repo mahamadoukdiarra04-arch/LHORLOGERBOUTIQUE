@@ -13,7 +13,7 @@
   <meta name="theme-color" content="#11100f">
   <link rel="stylesheet" href="<?= e(url('/assets/css/app.css')) ?>">
   <link rel="stylesheet" href="<?= e(url('/assets/css/brand.css')) ?>">
-  <link rel="stylesheet" href="<?= e(url('/assets/css/store-responsive.css')) ?>?v=20260913-mobile-product-gallery">
+  <link rel="stylesheet" href="<?= e(url('/assets/css/store-responsive.css')) ?>?v=20260913-product-ratings">
   <!-- Meta Pixel Code -->
   <script>
     !function(f,b,e,v,n,t,s)
