@@ -31,6 +31,13 @@ require APP_ROOT . '/templates/store-header.php';
 <main class="container product-page">
   <section class="product-layout">
     <div class="product-gallery">
+      <div class="gallery-variant-rail" aria-label="Choisir la couleur">
+        <?php foreach ($product['variants'] as $name => $image): ?>
+          <button type="button" data-variant-switch="<?= e($name) ?>" aria-label="Choisir la couleur <?= e($name) ?>" aria-pressed="<?= $name === array_key_first($product['variants']) ? 'true' : 'false' ?>">
+            <img src="<?= e(url('/' . $image)) ?>" alt="">
+          </button>
+        <?php endforeach; ?>
+      </div>
       <div class="gallery-main">
         <img data-gallery-main src="<?= e(url('/' . $gallery[0])) ?>" alt="<?= e($product['name']) ?>">
       </div>
@@ -65,6 +72,7 @@ require APP_ROOT . '/templates/store-header.php';
             </label>
           <?php endforeach; ?>
         </div>
+        <p class="selected-variant">Couleur : <strong data-selected-variant-label><?= e((string) array_key_first($product['variants'])) ?></strong></p>
         <input type="hidden" name="quantity" value="1">
         <button class="button" type="submit">Commander cette montre</button>
       </form>

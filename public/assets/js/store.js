@@ -61,11 +61,30 @@
 
   update();
   document.querySelectorAll('[data-gallery-thumb]').forEach(bindGalleryThumb);
-  document.querySelectorAll('[data-variant-image]').forEach((input) => input.addEventListener('change', () => {
+  const variantInputs = [...document.querySelectorAll('[data-variant-image]')];
+  const variantSwitches = [...document.querySelectorAll('[data-variant-switch]')];
+  const selectedVariantLabel = document.querySelector('[data-selected-variant-label]');
+
+  const applyVariant = (input) => {
     if (!input.checked) return;
     let gallery = [];
     try { gallery = JSON.parse(input.dataset.variantGallery || '[]'); }
     catch { gallery = []; }
     setGallery(Array.isArray(gallery) && gallery.length ? gallery : [input.dataset.variantImage], input.dataset.variantAlt);
+    variantSwitches.forEach((button) => {
+      button.setAttribute('aria-pressed', button.dataset.variantSwitch === input.value ? 'true' : 'false');
+    });
+    if (selectedVariantLabel) selectedVariantLabel.textContent = input.value;
+  };
+
+  variantInputs.forEach((input) => input.addEventListener('change', () => applyVariant(input)));
+  variantSwitches.forEach((button) => button.addEventListener('click', () => {
+    const input = variantInputs.find((candidate) => candidate.value === button.dataset.variantSwitch);
+    if (!input) return;
+    input.checked = true;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
   }));
+
+  const initialVariant = variantInputs.find((input) => input.checked);
+  if (initialVariant) applyVariant(initialVariant);
 })();

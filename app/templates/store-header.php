@@ -13,7 +13,7 @@
   <meta name="theme-color" content="#11100f">
   <link rel="stylesheet" href="<?= e(url('/assets/css/app.css')) ?>">
   <link rel="stylesheet" href="<?= e(url('/assets/css/brand.css')) ?>">
-  <link rel="stylesheet" href="<?= e(url('/assets/css/store-responsive.css')) ?>?v=20260906-variant-gallery">
+  <link rel="stylesheet" href="<?= e(url('/assets/css/store-responsive.css')) ?>?v=20260913-mobile-product-gallery">
   <!-- Meta Pixel Code -->
   <script>
     !function(f,b,e,v,n,t,s)
@@ -35,7 +35,7 @@
       src="https://www.facebook.com/tr?id=1719750622625367&ev=PageView&noscript=1"
       alt="">
   </noscript>
-  <div class="notice">Livraison offerte à Bamako · Paiement à la réception</div>
+  <div class="notice">Livraison offerte · Paiement à la réception</div>
   <header class="store-header">
     <a class="brand brand-logo" href="<?= e(url('/')) ?>" aria-label="L’Horloger — accueil">
       <img src="<?= e(url('/assets/brand/logo-mark.png')) ?>" alt="">
