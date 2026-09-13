@@ -197,7 +197,7 @@ function accounting_confirm_delivery(PDO $pdo, int $orderId, array $data, ?int $
         foreach ($lines as $line) {
             $lineId = (int) $line['id'];
             $productId = (int) $line['product_id'];
-            $variantId = accounting_stock_variant_id_for_name($pdo, $productId, (string) $line['variant']);
+            $variantId = accounting_stock_variant_id_for_name($pdo, $productId, (string) $line['variant'], true);
             $unitCost = $variantId !== null ? accounting_stock_unit_cost_snapshot($pdo, $productId, $variantId) : null;
             $unitCost ??= accounting_stock_unit_cost_snapshot($pdo, $productId);
             if ($unitCost === null) throw new RuntimeException('Renseignez un réassort avec coût avant de livrer cette commande.');
@@ -247,6 +247,7 @@ function accounting_confirm_delivery(PDO $pdo, int $orderId, array $data, ?int $
                 'order_id' => $line['id'],
                 'operation_group_id' => $groupResult['group']['id'],
                 'variant_id' => $variantIdsByOrder[(int) $line['id']] ?? null,
+                'allow_inactive_variant' => '1',
                 'unit_cost_snapshot_fcfa' => $unitCostsByOrder[(int) $line['id']],
                 'sale_unit_price_fcfa' => $line['unit_price_fcfa'],
                 'note' => 'Livraison ' . $orderRef,

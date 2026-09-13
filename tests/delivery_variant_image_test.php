@@ -10,6 +10,16 @@ function delivery_test_assert(bool $condition, string $message): void {
 
 $catalog = catalog();
 delivery_test_assert(
+    array_keys($catalog['nocturne-chrono']['variants'] ?? []) === ['Noir & brun', 'Noir intense'],
+    'La Nocturne Chrono doit proposer uniquement Noir & brun et Noir intense.'
+);
+foreach ($catalog['nocturne-chrono']['gallery'] ?? [] as $imagePath) {
+    delivery_test_assert(
+        !preg_match('/(rouge|argent|camel|bleu-brun)/i', (string) $imagePath),
+        'La galerie Nocturne ne doit plus montrer un coloris retiré : ' . $imagePath
+    );
+}
+delivery_test_assert(
     catalog_variant_image($catalog, 'nocturne-chrono', 'Noir & brun') === 'products/variants/nocturne-noir-brun.jpg',
     'La Nocturne Noir & brun doit utiliser sa photo exacte.'
 );

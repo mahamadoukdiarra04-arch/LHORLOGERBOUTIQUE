@@ -19,9 +19,9 @@ function accounting_stock_lock_products(PDO $pdo, array $productIds): array {
     return $products;
 }
 
-function accounting_stock_lock_variant(PDO $pdo, int $productId, int $variantId): array {
+function accounting_stock_lock_variant(PDO $pdo, int $productId, int $variantId, bool $requireActive = true): array {
     $statement = $pdo->prepare(
-        'SELECT id, product_id, name FROM product_variants WHERE id = ? AND product_id = ? AND is_active = 1 FOR UPDATE'
+        'SELECT id, product_id, name FROM product_variants WHERE id = ? AND product_id = ?' . ($requireActive ? ' AND is_active = 1' : '') . ' FOR UPDATE'
     );
     $statement->execute([$variantId, $productId]);
     $variant = $statement->fetch();
@@ -29,9 +29,9 @@ function accounting_stock_lock_variant(PDO $pdo, int $productId, int $variantId)
     return $variant;
 }
 
-function accounting_stock_variant_id_for_name(PDO $pdo, int $productId, string $variantName): ?int {
+function accounting_stock_variant_id_for_name(PDO $pdo, int $productId, string $variantName, bool $includeInactive = false): ?int {
     $statement = $pdo->prepare(
-        'SELECT id FROM product_variants WHERE product_id = ? AND name = ? AND is_active = 1 LIMIT 1'
+        'SELECT id FROM product_variants WHERE product_id = ? AND name = ?' . ($includeInactive ? '' : ' AND is_active = 1') . ' LIMIT 1'
     );
     $statement->execute([$productId, $variantName]);
     $variantId = $statement->fetchColumn();
@@ -85,7 +85,8 @@ function accounting_stock_record_movement(PDO $pdo, array $data): array {
     $variantId = array_key_exists('variant_id', $data) && $data['variant_id'] !== null && $data['variant_id'] !== ''
         ? accounting_integer($data['variant_id'], 'Le coloris', 1)
         : null;
-    $variant = $variantId !== null ? accounting_stock_lock_variant($pdo, $productId, $variantId) : null;
+    $allowInactiveVariant = accounting_flag($data['allow_inactive_variant'] ?? '0', 'Le coloris historique') === 1;
+    $variant = $variantId !== null ? accounting_stock_lock_variant($pdo, $productId, $variantId, !$allowInactiveVariant) : null;
 
     $orderId = array_key_exists('order_id', $data) && $data['order_id'] !== null
         ? accounting_integer($data['order_id'], 'La ligne de commande', 1)

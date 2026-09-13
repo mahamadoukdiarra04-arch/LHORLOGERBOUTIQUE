@@ -405,8 +405,8 @@ function accounting_create_refund(PDO $pdo, array $data, ?int $userId = null): a
         foreach ($entries as $lineId => $entry) if ($entry['return_to_stock']) {
             $line = $entry['line'];
             $returnVariantId = $sourceKind === 'direct_sale'
-                ? ((int) ($line['variant_id'] ?? 0) ?: accounting_stock_variant_id_for_name($pdo, (int) $line['product_id'], (string) ($line['variant_snapshot'] ?? '')))
-                : accounting_stock_variant_id_for_name($pdo, (int) $line['product_id'], (string) ($line['variant'] ?? ''));
+                ? ((int) ($line['variant_id'] ?? 0) ?: accounting_stock_variant_id_for_name($pdo, (int) $line['product_id'], (string) ($line['variant_snapshot'] ?? ''), true))
+                : accounting_stock_variant_id_for_name($pdo, (int) $line['product_id'], (string) ($line['variant'] ?? ''), true);
             if ($returnVariantId === null) {
                 throw new RuntimeException('Le coloris d’origine est introuvable ; le retour physique ne peut pas être confirmé.');
             }
@@ -424,6 +424,7 @@ function accounting_create_refund(PDO $pdo, array $data, ?int $userId = null): a
             $line = $entry['line'];
             accounting_stock_record_movement($pdo, [
                 'product_id' => $line['product_id'], 'variant_id' => $returnVariantIds[(int) $lineId], 'movement_type' => 'Ajustement', 'quantity' => $entry['quantity'], 'is_sale_return' => '1',
+                'allow_inactive_variant' => '1',
                 $sourceKind === 'order' ? 'order_id' : 'direct_sale_item_id' => $line['source_line_id'],
                 'operation_group_id' => $groupResult['group']['id'], 'unit_cost_snapshot_fcfa' => $line['unit_cost_snapshot_fcfa'],
                 'sale_unit_price_fcfa' => $line['unit_price_fcfa'], 'note' => 'Retour physique · ' . $reference, 'actor' => admin_identity(),

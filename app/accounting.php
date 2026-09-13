@@ -387,6 +387,7 @@ function accounting_add_stock_effective_date(PDO $pdo): void {
 function accounting_seed_product_variants(PDO $pdo): void {
     require_once APP_ROOT . '/catalog.php';
     $findProduct = $pdo->prepare('SELECT id FROM products WHERE slug = ? LIMIT 1');
+    $deactivate = $pdo->prepare('UPDATE product_variants SET is_active = 0 WHERE product_id = ?');
     $insert = $pdo->prepare(
         'INSERT INTO product_variants (product_id, name, image_path, is_active)
          VALUES (?, ?, ?, 1)
@@ -396,6 +397,10 @@ function accounting_seed_product_variants(PDO $pdo): void {
         $findProduct->execute([(string) $slug]);
         $productId = (int) $findProduct->fetchColumn();
         if ($productId < 1) continue;
+        // The catalogue is the source of truth for currently sellable variants.
+        // Rows are kept for order and stock history, but removed variants are no
+        // longer proposed in public or administrative forms.
+        $deactivate->execute([$productId]);
         foreach ((array) ($product['variants'] ?? []) as $name => $imagePath) {
             $insert->execute([$productId, (string) $name, (string) $imagePath]);
         }
