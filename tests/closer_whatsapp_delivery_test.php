@@ -51,5 +51,16 @@ closer_whatsapp_assert(
         && !str_contains($management, "'Injoignable'"),
     'Injoignable doit toujours annuler la commande en gestion et la retirer du suivi actif.'
 );
+closer_whatsapp_assert(
+    str_contains($closer, "if (\$isUnreachable) \$redirectPath = '/closer/?unreachable=' . \$orderId")
+        && str_contains($closer, 'closer_unreachable_whatsapp_message')
+        && str_contains($closer, "*Bonjour, c'est L'Horloger ⌚*")
+        && str_contains($closer, 'data-unreachable-whatsapp-share')
+        && str_contains($closer, 'Ouvrir le WhatsApp du client')
+        && str_contains($script, 'createUnreachableImage')
+        && str_contains($script, "'relance-' + unreachableReference + '.jpg'")
+        && str_contains($script, 'files: [unreachableFile]'),
+    'Après un appel injoignable, la closeuse doit pouvoir relancer le client avec le bon visuel et le message prévu.'
+);
 
 echo "closer_whatsapp_delivery_test: OK\n";

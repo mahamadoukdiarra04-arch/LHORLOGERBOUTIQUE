@@ -44,6 +44,21 @@ function closer_whatsapp_link(array $order, string $number): string {
     $phone = preg_replace('/\D+/', '', $number);
     return 'https://wa.me/' . rawurlencode($phone) . '?text=' . rawurlencode(closer_whatsapp_message($order));
 }
+function closer_customer_whatsapp_phone(string $number): string {
+    $phone = preg_replace('/\D+/', '', $number);
+    if (str_starts_with($phone, '00')) $phone = substr($phone, 2);
+    if (strlen($phone) === 8) $phone = '223' . $phone;
+    return $phone;
+}
+function closer_unreachable_whatsapp_message(): string {
+    return "*Bonjour, c'est L'Horloger ⌚*\n\n"
+        . "Votre commande est prête ! (Voir photo 👇)\n\n"
+        . "Répondez simplement *\"OUI\"* à ce message pour que notre livreur vous l'apporte aujourd'hui.";
+}
+function closer_unreachable_whatsapp_link(array $order): string {
+    return 'https://wa.me/' . rawurlencode(closer_customer_whatsapp_phone((string) $order['phone']))
+        . '?text=' . rawurlencode(closer_unreachable_whatsapp_message());
+}
 function closer_relative_time(string $value): string {
     try {
         $then = new DateTimeImmutable($value, accounting_bamako_timezone());
@@ -72,6 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = (string) ($_POST['action'] ?? '');
     $orderId = (int) ($_POST['order_id'] ?? 0);
 
+    $redirectPath = '/closer/';
     try {
         if ($orderId < 1) throw new RuntimeException('Commande invalide.');
         $orderStatement = $pdo->prepare('SELECT * FROM orders WHERE id = ? FOR UPDATE');
@@ -150,8 +166,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->commit();
             flash(
                 'success',
-                $isUnreachable ? 'Commande classée injoignable et retirée du suivi.' : 'Suivi de commande mis à jour.'
+                $isUnreachable ? 'Commande classée injoignable et retirée du suivi. Vous pouvez maintenant envoyer la relance WhatsApp.' : 'Suivi de commande mis à jour.'
             );
+            if ($isUnreachable) $redirectPath = '/closer/?unreachable=' . $orderId;
         } elseif ($action === 'prepare_whatsapp') {
             if ($tracking['follow_up_status'] !== 'Confirmée' || $order['status'] !== 'Confirmée') {
                 throw new RuntimeException('Confirmez la commande avant de préparer WhatsApp.');
@@ -195,10 +212,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         error_log('L’Horloger: action closeuse échouée.');
         flash('error', closer_safe_error_message($exception));
     }
-    redirect('/closer/');
+    redirect($redirectPath);
 }
 
 $catalog = catalog();
+$unreachableOrder = null;
+$unreachableOrderId = filter_var($_GET['unreachable'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0;
+if ($unreachableOrderId > 0) {
+    $unreachableStatement = $pdo->prepare(
+        "SELECT o.*, p.slug, t.follow_up_status
+         FROM orders o
+         JOIN products p ON p.id = o.product_id
+         JOIN order_closer_tracking t ON t.order_id = o.id
+         WHERE o.id = ?
+           AND t.closer_identity = ?
+           AND t.follow_up_status = 'Injoignable'
+           AND o.status = 'Annulée'
+         LIMIT 1"
+    );
+    $unreachableStatement->execute([$unreachableOrderId, $closer]);
+    $unreachableOrder = $unreachableStatement->fetch() ?: null;
+}
 $closerStock = [];
 try {
     $stockStatement = $pdo->query(
@@ -306,6 +340,38 @@ require APP_ROOT . '/templates/closer-header.php';
 <header class="closer-hero">
   <div><p class="closer-kicker">Espace closeuse</p><h1>Mes ventes à confirmer.</h1><p>Appelez, notez le résultat puis partagez au livreur la fiche illustrée de chaque commande validée.</p></div>
 </header>
+<?php if ($unreachableOrder):
+    $unreachableImageUrl = url('/' . closer_image($unreachableOrder, $catalog));
+    $unreachableMessage = closer_unreachable_whatsapp_message();
+    $unreachableWhatsappUrl = closer_unreachable_whatsapp_link($unreachableOrder);
+?>
+  <section class="closer-unreachable" aria-labelledby="unreachable-title">
+    <div class="closer-unreachable__head">
+      <div><p class="closer-kicker">Relance après appel</p><h2 id="unreachable-title">Envoyer un WhatsApp au client</h2><p>La commande est bien classée injoignable et retirée de votre suivi. Envoyez maintenant cette relance avec la photo de la bonne couleur.</p></div>
+      <a class="closer-unreachable__close" href="<?= e(url('/closer/')) ?>" aria-label="Fermer la relance">×</a>
+    </div>
+    <div class="closer-unreachable__content">
+      <img src="<?= e($unreachableImageUrl) ?>" alt="<?= e($unreachableOrder['product_name'] . ' · ' . $unreachableOrder['variant']) ?>">
+      <div class="closer-unreachable__details">
+        <strong><?= e($unreachableOrder['product_name']) ?></strong>
+        <span>Couleur : <?= e($unreachableOrder['variant']) ?></span>
+        <span><?= e(trim($unreachableOrder['customer_first_name'] . ' ' . $unreachableOrder['customer_last_name'])) ?> · <?= e($unreachableOrder['phone']) ?></span>
+        <blockquote><?= nl2br(e($unreachableMessage)) ?></blockquote>
+      </div>
+    </div>
+    <div class="closer-unreachable__actions" data-unreachable-share-area>
+      <button class="closer-button whatsapp" type="button" data-unreachable-whatsapp-share
+        data-message="<?= e($unreachableMessage) ?>" data-image-url="<?= e($unreachableImageUrl) ?>"
+        data-product="<?= e($unreachableOrder['product_name']) ?>" data-variant="<?= e($unreachableOrder['variant']) ?>"
+        data-reference="<?= e($unreachableOrder['order_ref']) ?>">
+        Partager la photo + le message
+      </button>
+      <a class="closer-button-link secondary" target="_blank" rel="noopener" href="<?= e($unreachableWhatsappUrl) ?>">Ouvrir le WhatsApp du client</a>
+      <p class="closer-share-status" data-unreachable-share-status aria-live="polite"></p>
+    </div>
+    <p class="closer-whatsapp-note">Sur iPhone, utilisez d’abord le bouton vert pour joindre la photo. Si le partage n’est pas disponible, ouvrez directement WhatsApp puis joignez la photo affichée ci-dessus.</p>
+  </section>
+<?php endif; ?>
 <section class="closer-metrics">
   <article class="closer-metric"><span>Nouvelles à traiter</span><strong><?= $newOrdersTotal ?></strong></article>
   <article class="closer-metric"><span>Dans mon suivi</span><strong><?= count($myOrders) ?></strong></article>

@@ -78,6 +78,37 @@
     return canvasBlob(canvas);
   }
 
+  async function createUnreachableImage(button) {
+    var picture = await loadImage(button.dataset.imageUrl);
+    var canvas = document.createElement('canvas');
+    canvas.width = 1080;
+    canvas.height = 1080;
+    var context = canvas.getContext('2d');
+    if (!context) throw new Error('La photo ne peut pas être préparée sur cet appareil.');
+
+    context.fillStyle = '#f5f1e9';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = '#112b4b';
+    context.fillRect(0, 0, canvas.width, 130);
+    context.fillStyle = '#ffffff';
+    context.textAlign = 'center';
+    context.font = '700 50px Arial, sans-serif';
+    context.fillText('L’HORLOGER', 540, 82);
+
+    context.fillStyle = '#ffffff';
+    context.fillRect(55, 160, 970, 720);
+    drawContained(context, picture, 80, 185, 920, 670);
+
+    context.textAlign = 'left';
+    context.fillStyle = '#112b4b';
+    context.font = '700 42px Arial, sans-serif';
+    context.fillText(button.dataset.product, 65, 950);
+    context.fillStyle = '#52667d';
+    context.font = '700 30px Arial, sans-serif';
+    context.fillText('Couleur : ' + button.dataset.variant, 65, 1002);
+    return canvasBlob(canvas);
+  }
+
   function setupOrderEditing() {
     var source = document.getElementById('closer-order-edit-catalog');
     if (!source) return;
@@ -138,6 +169,45 @@
   setupOrderEditing();
 
   document.addEventListener('click', async function (event) {
+    var unreachableButton = event.target.closest('[data-unreachable-whatsapp-share]');
+    if (unreachableButton) {
+      var shareArea = unreachableButton.closest('[data-unreachable-share-area]');
+      var unreachableStatus = shareArea ? shareArea.querySelector('[data-unreachable-share-status]') : null;
+      var unreachableOriginalLabel = unreachableButton.textContent;
+      unreachableButton.disabled = true;
+      unreachableButton.textContent = 'Préparation de la photo…';
+      if (unreachableStatus) unreachableStatus.textContent = '';
+      try {
+        if (!navigator.share || typeof window.File !== 'function') {
+          throw new Error('Partage indisponible');
+        }
+        var unreachableBlob = await createUnreachableImage(unreachableButton);
+        var unreachableReference = (unreachableButton.dataset.reference || 'commande').replace(/[^a-zA-Z0-9_-]+/g, '-');
+        var unreachableFile = new File([unreachableBlob], 'relance-' + unreachableReference + '.jpg', { type: 'image/jpeg' });
+        var unreachableShareData = {
+          title: 'Relance L’Horloger',
+          text: unreachableButton.dataset.message,
+          files: [unreachableFile]
+        };
+        if (navigator.canShare && !navigator.canShare(unreachableShareData)) {
+          throw new Error('Partage de fichier indisponible');
+        }
+        await navigator.share(unreachableShareData);
+        if (unreachableStatus) unreachableStatus.textContent = 'Partage terminé. La commande reste classée injoignable.';
+      } catch (error) {
+        if (error && error.name === 'AbortError') {
+          if (unreachableStatus) unreachableStatus.textContent = 'Partage annulé. Vous pouvez réessayer ou ouvrir directement WhatsApp.';
+        } else if (unreachableStatus) {
+          unreachableStatus.textContent = 'Le partage avec photo n’est pas disponible ici. Ouvrez le WhatsApp du client et joignez la photo affichée.';
+          unreachableStatus.classList.add('is-error');
+        }
+      } finally {
+        unreachableButton.disabled = false;
+        unreachableButton.textContent = unreachableOriginalLabel;
+      }
+      return;
+    }
+
     var editToggle = event.target.closest('[data-closer-edit-toggle]');
     if (editToggle) {
       var editPanel = document.getElementById(editToggle.getAttribute('aria-controls'));
