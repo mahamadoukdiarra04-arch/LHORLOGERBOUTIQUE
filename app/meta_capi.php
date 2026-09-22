@@ -25,8 +25,14 @@ function meta_capi_is_configured(): bool {
 }
 
 function meta_capi_column_exists(PDO $pdo, string $table, string $column): bool {
-    $statement = $pdo->prepare('SHOW COLUMNS FROM `' . $table . '` LIKE ?');
-    $statement->execute([$column]);
+    // MariaDB does not allow a placeholder in SHOW COLUMNS ... LIKE. Querying
+    // information_schema keeps this schema check portable and parameterised.
+    $statement = $pdo->prepare(
+        'SELECT 1 FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?
+         LIMIT 1'
+    );
+    $statement->execute([$table, $column]);
     return (bool) $statement->fetch();
 }
 
