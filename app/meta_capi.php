@@ -104,6 +104,24 @@ function meta_capi_capture_landing_context(): void {
     if ($fbp !== '') $_SESSION['meta_fbp'] = $fbp;
 }
 
+/**
+ * Keep the visitor address when the site is served through Hostinger's CDN or
+ * another reverse proxy. Meta expects the IP in clear text; it must never be
+ * hashed. Invalid header values are ignored rather than being sent to Meta.
+ */
+function meta_capi_client_ip(): ?string {
+    $candidates = [
+        $_SERVER['HTTP_CF_CONNECTING_IP'] ?? null,
+        $_SERVER['HTTP_X_FORWARDED_FOR'] ?? null,
+        $_SERVER['REMOTE_ADDR'] ?? null,
+    ];
+    foreach ($candidates as $candidate) {
+        $ip = trim(explode(',', (string) $candidate)[0]);
+        if (filter_var($ip, FILTER_VALIDATE_IP)) return $ip;
+    }
+    return null;
+}
+
 function meta_capi_order_attribution(array $input): array {
     meta_capi_capture_landing_context();
     $fbc = substr(trim((string) ($input['meta_fbc'] ?? $_SESSION['meta_fbc'] ?? meta_capi_cookie('_fbc'))), 0, 255);
@@ -112,7 +130,7 @@ function meta_capi_order_attribution(array $input): array {
     return [
         'fbc' => $fbc !== '' ? $fbc : null,
         'fbp' => $fbp !== '' ? $fbp : null,
-        'ip' => substr(trim((string) ($_SERVER['REMOTE_ADDR'] ?? '')), 0, 45) ?: null,
+        'ip' => meta_capi_client_ip(),
         'user_agent' => substr(trim((string) ($_SERVER['HTTP_USER_AGENT'] ?? '')), 0, 500) ?: null,
         'landing_url' => $landing !== '' ? $landing : null,
     ];
