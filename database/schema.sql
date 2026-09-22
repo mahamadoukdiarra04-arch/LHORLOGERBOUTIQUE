@@ -39,6 +39,11 @@ CREATE TABLE IF NOT EXISTS orders (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   delivered_at DATETIME NULL,
+  meta_fbc VARCHAR(255) NULL,
+  meta_fbp VARCHAR(255) NULL,
+  meta_client_ip VARCHAR(45) NULL,
+  meta_client_user_agent VARCHAR(500) NULL,
+  meta_landing_url VARCHAR(2048) NULL,
   INDEX idx_orders_ref (order_ref), INDEX idx_orders_status (status), INDEX idx_orders_created (created_at), INDEX idx_orders_ref_status (order_ref, status), INDEX idx_orders_variant (variant_id),
   CONSTRAINT fk_orders_product FOREIGN KEY (product_id) REFERENCES products(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -133,6 +138,27 @@ CREATE TABLE IF NOT EXISTS app_settings (
   setting_key VARCHAR(80) NOT NULL PRIMARY KEY,
   setting_value VARCHAR(255) NULL,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS meta_capi_events (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  order_ref VARCHAR(32) NOT NULL,
+  event_key VARCHAR(40) NOT NULL,
+  event_name VARCHAR(80) NOT NULL,
+  event_id VARCHAR(120) NOT NULL,
+  value_fcfa BIGINT UNSIGNED NULL,
+  occurred_at DATETIME NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  attempts SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  last_attempt_at DATETIME NULL,
+  delivered_at DATETIME NULL,
+  last_http_status SMALLINT UNSIGNED NULL,
+  last_error VARCHAR(1000) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_meta_capi_order_event (order_ref, event_key),
+  INDEX idx_meta_capi_status_created (status, created_at),
+  INDEX idx_meta_capi_order_ref (order_ref)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS closer_delivery_batches (

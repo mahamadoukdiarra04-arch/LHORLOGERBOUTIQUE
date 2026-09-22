@@ -93,4 +93,5 @@ require APP_ROOT . '/templates/store-header.php';
     <div class="product-specs"><?php foreach ($product['specs'] as $label => $value): ?><div><dt><?= e($label) ?></dt><dd><?= e($value) ?></dd></div><?php endforeach; ?></div>
   </section>
 </main>
+<script>if(typeof fbq==='function')fbq('track','ViewContent',{content_ids:[<?= json_encode((string) $product['sku']) ?>],content_name:<?= json_encode($product['name'], JSON_UNESCAPED_UNICODE) ?>,content_type:'product',currency:'XOF',value:<?= (int) $product['price'] ?>});</script>
 <?php require APP_ROOT . '/templates/store-footer.php'; ?>

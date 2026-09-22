@@ -474,3 +474,4 @@ function sync_all_closer_tracking(PDO $pdo): void {
 // Loading the definitions here keeps all future admin entry points on the same
 // server-side rules without initializing accounts or financial data.
 require_once APP_ROOT . '/accounting.php';
+require_once APP_ROOT . '/meta_capi.php';

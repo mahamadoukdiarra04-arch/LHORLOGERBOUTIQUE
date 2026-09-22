@@ -2,6 +2,7 @@
 require __DIR__ . '/../app/bootstrap.php';
 
 $sessionReference = (string) ($_SESSION['latest_order_ref'] ?? '');
+$isFreshOrder = $sessionReference !== '';
 $queryReference = trim((string) ($_GET['ref'] ?? ''));
 
 if ($sessionReference !== '') {
@@ -31,4 +32,7 @@ require APP_ROOT . '/templates/store-header.php';
   </section>
 </main>
 <script>LHorlogerCart.write([]);</script>
+<?php if ($isFreshOrder): $leadValue = 0; try { $sum = db()->prepare('SELECT COALESCE(SUM(quantity * unit_price_fcfa), 0) FROM orders WHERE order_ref = ?'); $sum->execute([$reference]); $leadValue = (int) $sum->fetchColumn(); } catch (Throwable) {} ?>
+<script>if(typeof fbq==='function')fbq('track','Lead',{currency:'XOF',value:<?= $leadValue ?>,content_type:'product'},{eventID:<?= json_encode(meta_capi_event_id($reference, 'lead')) ?>});</script>
+<?php endif; ?>
 <?php require APP_ROOT . '/templates/store-footer.php'; ?>

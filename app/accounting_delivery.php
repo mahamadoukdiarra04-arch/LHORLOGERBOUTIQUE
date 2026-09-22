@@ -144,7 +144,7 @@ function accounting_confirm_delivery(PDO $pdo, int $orderId, array $data, ?int $
     $exceptionMode = accounting_flag($data['exception_mode'] ?? '0', 'Le mode d’exception');
     $exceptionReason = accounting_optional_text($data['exception_reason'] ?? null, 'Le motif de l’exception', 500);
 
-    return accounting_with_transaction($pdo, function () use ($pdo, $orderId, $data, $userId, $idempotencyKey, $effectiveAt, $exceptionMode, $exceptionReason): array {
+    $result = accounting_with_transaction($pdo, function () use ($pdo, $orderId, $data, $userId, $idempotencyKey, $effectiveAt, $exceptionMode, $exceptionReason): array {
         $selected = $pdo->prepare('SELECT id, order_ref FROM orders WHERE id = ?');
         $selected->execute([$orderId]);
         $source = $selected->fetch();
@@ -270,4 +270,10 @@ function accounting_confirm_delivery(PDO $pdo, int $orderId, array $data, ?int $
         ], $userId);
         return ['group' => $groupResult['group'], 'order_ref' => $orderRef, 'replayed' => false, 'total_fcfa' => $total, 'paid_fcfa' => $paid];
     });
+    // A Purchase is only emitted after the order is genuinely delivered and
+    // fully collected. Partial deliveries wait for balance collection.
+    if (!$result['replayed'] && (int) $result['paid_fcfa'] === (int) $result['total_fcfa']) {
+        try { meta_capi_queue_order_event($pdo, (string) $result['order_ref'], 'purchase', (int) $result['paid_fcfa']); } catch (Throwable $metaException) { error_log('L’Horloger: signal Meta Purchase différé.'); }
+    }
+    return $result;
 }

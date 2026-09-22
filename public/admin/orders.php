@@ -64,6 +64,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             sync_closer_tracking_for_order_ref($pdo, (string) $order['order_ref']);
             $pdo->commit();
+            if ($status === 'Confirmée') {
+                try { meta_capi_queue_order_event($pdo, (string) $order['order_ref'], 'confirmed'); } catch (Throwable $metaException) { error_log('L’Horloger: signal Meta ConfirmedOrder différé.'); }
+            }
             log_event('commande', 'Commande ' . $order['order_ref'] . ' mise à jour : ' . $status, null, $orderId);
             flash('success', 'Référence de commande mise à jour.');
         } catch (Throwable $exception) {

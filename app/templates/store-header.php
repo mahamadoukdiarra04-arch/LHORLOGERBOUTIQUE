@@ -1,4 +1,4 @@
-<?php $pageTitle = $pageTitle ?? 'L’Horloger'; ?>
+<?php $pageTitle = $pageTitle ?? 'L’Horloger'; meta_capi_capture_landing_context(); ?>
 <!doctype html>
 <html lang="fr">
 <head>

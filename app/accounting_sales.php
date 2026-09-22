@@ -53,7 +53,7 @@ function accounting_collect_order_balance(PDO $pdo, array $data, ?int $userId = 
     $orderRef = accounting_non_empty_text($data['order_ref'] ?? null, 'La référence de commande', 32);
     $effectiveAt = accounting_effective_at($data['effective_at'] ?? null, 'La date d’encaissement');
 
-    return accounting_with_transaction($pdo, function () use ($pdo, $data, $userId, $idempotencyKey, $orderRef, $effectiveAt): array {
+    $result = accounting_with_transaction($pdo, function () use ($pdo, $data, $userId, $idempotencyKey, $orderRef, $effectiveAt): array {
         $groupResult = accounting_create_operation_group($pdo, [
             'group_type' => 'balance_collection', 'idempotency_key' => $idempotencyKey, 'order_ref' => $orderRef,
         ], $userId);
@@ -113,8 +113,14 @@ function accounting_collect_order_balance(PDO $pdo, array $data, ?int $userId = 
             $update->execute([$userId ?? accounting_current_user_id(), $effectiveAt, $orderRef]);
         }
         accounting_audit($pdo, 'collect_order_balance', 'order_reference', null, ['order_ref' => $orderRef], ['group_id' => $groupResult['group']['id'], 'paid_fcfa' => $paid], $userId);
-        return ['group' => $groupResult['group'], 'order_ref' => $orderRef, 'paid_fcfa' => $paid, 'remaining_fcfa' => $remainder - $paid, 'replayed' => false];
+        $total = 0;
+        foreach ($lines as $line) $total += (int) $line['quantity'] * (int) $line['unit_price_fcfa'];
+        return ['group' => $groupResult['group'], 'order_ref' => $orderRef, 'paid_fcfa' => $paid, 'remaining_fcfa' => $remainder - $paid, 'total_fcfa' => $total, 'replayed' => false];
     });
+    if (!$result['replayed'] && (int) ($result['remaining_fcfa'] ?? 1) === 0) {
+        try { meta_capi_queue_order_event($pdo, (string) $result['order_ref'], 'purchase', (int) ($result['total_fcfa'] ?? 0)); } catch (Throwable $metaException) { error_log('L’Horloger: signal Meta Purchase différé.'); }
+    }
+    return $result;
 }
 
 function accounting_normalize_direct_sale_items(mixed $input): array {

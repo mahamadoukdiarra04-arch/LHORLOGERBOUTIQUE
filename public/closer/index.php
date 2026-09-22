@@ -164,6 +164,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             sync_closer_tracking_for_order_ref($pdo, (string) $order['order_ref']);
             log_closer_event($orderId, $state, $note !== '' ? $note : null);
             $pdo->commit();
+            if ($state === 'Confirmée') {
+                try { meta_capi_queue_order_event($pdo, (string) $order['order_ref'], 'confirmed'); } catch (Throwable $metaException) { error_log('L’Horloger: signal Meta ConfirmedOrder différé.'); }
+            }
             flash(
                 'success',
                 $isUnreachable ? 'Commande classée injoignable et retirée du suivi. Vous pouvez maintenant envoyer la relance WhatsApp.' : 'Suivi de commande mis à jour.'
