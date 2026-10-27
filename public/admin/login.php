@@ -1,5 +1,14 @@
 <?php
 require __DIR__ . '/../../app/bootstrap.php';
+try {
+    ensure_accounting_schema();
+    $arrivalStatus = db()->prepare('SELECT 1 FROM accounting_schema_migrations WHERE version = ?');
+    $arrivalStatus->execute([ACCOUNTING_STOCK_ARRIVAL_20261027_VERSION]);
+    header('X-LHorloger-Stock-Arrival: ' . ($arrivalStatus->fetchColumn() ? 'applied' : 'pending'));
+} catch (Throwable $exception) {
+    error_log('L’Horloger: arrivée du stock du 22/10/2026 non appliquée.');
+    header('X-LHorloger-Stock-Arrival: error');
+}
 if (is_admin()) redirect(admin_landing_path());
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();

@@ -10,6 +10,7 @@ const ACCOUNTING_DELIVERY_EXPENSE_CATEGORY_VERSION = '20260828_delivery_expense_
 const ACCOUNTING_ORDER_EDIT_VERSION = '20260901_order_edit';
 const ACCOUNTING_DELIVERY_SHOP_SCOPE_VERSION = '20260902_delivery_shop_scope';
 const ACCOUNTING_CATALOG_VARIANTS_VERSION = '20260913_catalog_variants';
+const ACCOUNTING_STOCK_ARRIVAL_20261027_VERSION = '20261027_stock_arrival_20261022_purchase';
 
 /**
  * The accounting foundation is deliberately initialized from PHP as well as
@@ -97,9 +98,93 @@ function ensure_accounting_schema(): void {
             $mark = $pdo->prepare('INSERT INTO accounting_schema_migrations (version) VALUES (?)');
             $mark->execute([ACCOUNTING_CATALOG_VARIANTS_VERSION]);
         }
+        $stockArrivalApplied = $pdo->prepare('SELECT 1 FROM accounting_schema_migrations WHERE version = ?');
+        $stockArrivalApplied->execute([ACCOUNTING_STOCK_ARRIVAL_20261027_VERSION]);
+        if (!$stockArrivalApplied->fetchColumn()) {
+            accounting_apply_stock_arrival_20261027($pdo);
+            $mark = $pdo->prepare('INSERT INTO accounting_schema_migrations (version) VALUES (?)');
+            $mark->execute([ACCOUNTING_STOCK_ARRIVAL_20261027_VERSION]);
+        }
         $ready = true;
     } finally {
         $pdo->query("SELECT RELEASE_LOCK('lhorloger_accounting_foundation')");
+    }
+}
+
+/**
+ * Receive the stock bought on 22/10/2026 without duplicating the already
+ * confirmed accounting purchases. The accounting group is linked to each
+ * movement when it is available so the audit trail stays continuous.
+ */
+function accounting_apply_stock_arrival_20261027(PDO $pdo): void {
+    $arrivals = [
+        [
+            'slug' => 'nocturne-chrono',
+            'variant' => 'Noir & brun',
+            'quantity' => 19,
+            'purchase_price_fcfa' => 130496,
+            'group_reference' => 'COM-20261022-3D1A1515',
+            'note' => 'Arrivage du lot acheté le 22/10/2026 · 19 Nocturne Chrono Noir & brun',
+        ],
+        [
+            'slug' => 'azur-squelette',
+            'variant' => 'Noir squelette',
+            'quantity' => 1,
+            'purchase_price_fcfa' => 8227,
+            'group_reference' => 'COM-20261022-7CED8814',
+            'note' => 'Arrivage du lot acheté le 22/10/2026 · 1 Azur Squelette Noir squelette',
+        ],
+    ];
+
+    $pdo->beginTransaction();
+    try {
+        $product = $pdo->prepare('SELECT id FROM products WHERE slug = ? LIMIT 1 FOR UPDATE');
+        $variant = $pdo->prepare(
+            'SELECT id FROM product_variants WHERE product_id = ? AND name = ? LIMIT 1 FOR UPDATE'
+        );
+        $group = $pdo->prepare(
+            'SELECT id FROM accounting_operation_groups WHERE public_reference = ? LIMIT 1'
+        );
+        $existing = $pdo->prepare(
+            'SELECT id FROM stock_movements WHERE movement_type = "Réassort" AND note = ? LIMIT 1 FOR UPDATE'
+        );
+        $insert = $pdo->prepare(
+            'INSERT INTO stock_movements
+             (product_id, variant_id, operation_group_id, movement_type, quantity, purchase_price_fcfa,
+              transit_price_fcfa, unit_cost_fcfa, note, actor, effective_at)
+             VALUES (?, ?, ?, "Réassort", ?, ?, 0, ?, ?, "MKD", ?)'
+        );
+        $effectiveAt = (new DateTimeImmutable('now', accounting_bamako_timezone()))->format('Y-m-d H:i:s');
+
+        foreach ($arrivals as $arrival) {
+            $existing->execute([$arrival['note']]);
+            if ($existing->fetchColumn()) continue;
+
+            $product->execute([$arrival['slug']]);
+            $productId = (int) $product->fetchColumn();
+            if ($productId < 1) throw new RuntimeException('Le produit de l’arrivage est introuvable.');
+
+            $variant->execute([$productId, $arrival['variant']]);
+            $variantId = (int) $variant->fetchColumn();
+            if ($variantId < 1) throw new RuntimeException('Le coloris de l’arrivage est introuvable.');
+
+            $group->execute([$arrival['group_reference']]);
+            $groupId = $group->fetchColumn();
+            $insert->execute([
+                $productId,
+                $variantId,
+                $groupId === false ? null : (int) $groupId,
+                $arrival['quantity'],
+                $arrival['purchase_price_fcfa'],
+                intdiv($arrival['purchase_price_fcfa'], $arrival['quantity']),
+                $arrival['note'],
+                $effectiveAt,
+            ]);
+        }
+        $pdo->commit();
+    } catch (Throwable $exception) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $exception;
     }
 }
 
