@@ -103,6 +103,68 @@ function ensure_accounting_schema(): void {
     }
 }
 
+/**
+ * One-time, idempotent posting requested on 27/10/2026: MKD funds the cash
+ * account, then the same amount is paid to Meta for Nocturne Chrono.
+ */
+function accounting_apply_mkd_meta_15100_20261027(PDO $pdo): void {
+    ensure_accounting_schema();
+
+    $cashAccounts = $pdo->query(
+        "SELECT id, code, name FROM accounting_accounts
+         WHERE is_active = 1 AND account_type = 'cash'
+         ORDER BY id ASC"
+    )->fetchAll();
+    $exactCashAccounts = array_values(array_filter(
+        $cashAccounts,
+        static fn (array $account): bool => strtoupper((string) $account['code']) === 'CAISSE'
+            || mb_strtolower(trim((string) $account['name']), 'UTF-8') === 'caisse'
+    ));
+    $cashAccount = count($exactCashAccounts) === 1
+        ? $exactCashAccounts[0]
+        : (count($cashAccounts) === 1 ? $cashAccounts[0] : null);
+    if (!$cashAccount) throw new RuntimeException('Le compte Caisse actif est introuvable ou ambigu.');
+
+    $productStatement = $pdo->prepare('SELECT id FROM products WHERE slug = ? LIMIT 1');
+    $productStatement->execute(['nocturne-chrono']);
+    $productId = (int) $productStatement->fetchColumn();
+    if ($productId < 1) throw new RuntimeException('Nocturne Chrono est introuvable.');
+
+    $category = accounting_category_by_code($pdo, 'meta_ads');
+    $userStatement = $pdo->prepare('SELECT id FROM admin_users WHERE username = ? LIMIT 1');
+    $userStatement->execute(['MKD']);
+    $userId = $userStatement->fetchColumn();
+    $userId = $userId === false ? null : (int) $userId;
+    $effectiveAt = (new DateTimeImmutable('now', accounting_bamako_timezone()))->format('Y-m-d H:i:s');
+
+    accounting_create_owner_contribution($pdo, [
+        'idempotency_key' => '9b6e4060-4380-4ec2-9f37-151002710001',
+        'status' => 'confirmed',
+        'effective_at' => $effectiveAt,
+        'account_id' => (int) $cashAccount['id'],
+        'amount_fcfa' => 15100,
+        'counterparty' => 'MKD',
+        'payment_reference' => 'APPORT-MKD-20261027-META-NOCTURNE',
+        'note' => 'Apport MKD destiné au paiement Meta Ads de la Nocturne Chrono.',
+    ], $userId);
+
+    accounting_create_disbursement($pdo, [
+        'idempotency_key' => '9b6e4060-4380-4ec2-9f37-151002710002',
+        'status' => 'confirmed',
+        'effective_at' => $effectiveAt,
+        'account_id' => (int) $cashAccount['id'],
+        'amount_fcfa' => 15100,
+        'category_id' => (int) $category['id'],
+        'scope' => 'product',
+        'product_id' => $productId,
+        'label' => 'Publicité Meta · Nocturne Chrono',
+        'counterparty' => 'Meta',
+        'payment_reference' => 'META-NOCTURNE-20261027-15100',
+        'note' => 'Paiement Meta Ads financé par l’apport MKD du même jour.',
+        'allow_negative_balance' => '0',
+    ], $userId);
+}
+
 function accounting_create_foundation_tables(PDO $pdo): void {
     $statements = [
         "CREATE TABLE IF NOT EXISTS accounting_accounts (
