@@ -110,20 +110,20 @@ function ensure_accounting_schema(): void {
 function accounting_apply_mkd_meta_15100_20261027(PDO $pdo): void {
     ensure_accounting_schema();
 
-    $cashAccounts = $pdo->query(
+    $treasuryAccounts = $pdo->query(
         "SELECT id, code, name FROM accounting_accounts
-         WHERE is_active = 1 AND account_type = 'cash'
+         WHERE is_active = 1
          ORDER BY id ASC"
     )->fetchAll();
     $exactCashAccounts = array_values(array_filter(
-        $cashAccounts,
+        $treasuryAccounts,
         static fn (array $account): bool => strtoupper((string) $account['code']) === 'CAISSE'
             || mb_strtolower(trim((string) $account['name']), 'UTF-8') === 'caisse'
     ));
     $cashAccount = count($exactCashAccounts) === 1
         ? $exactCashAccounts[0]
-        : (count($cashAccounts) === 1 ? $cashAccounts[0] : null);
-    if (!$cashAccount) throw new RuntimeException('Le compte Caisse actif est introuvable ou ambigu.');
+        : (count($treasuryAccounts) === 1 ? $treasuryAccounts[0] : null);
+    if (!$cashAccount) throw new RuntimeException('Le compte de trésorerie à utiliser est introuvable ou ambigu.');
 
     $productStatement = $pdo->prepare('SELECT id FROM products WHERE slug = ? LIMIT 1');
     $productStatement->execute(['nocturne-chrono']);
