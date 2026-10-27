@@ -1,20 +1,5 @@
 <?php
 require __DIR__ . '/../../app/bootstrap.php';
-try {
-    accounting_apply_mkd_meta_15100_20261027(db());
-    header('X-LHorloger-Accounting-20261027: applied');
-} catch (Throwable $exception) {
-    error_log('L’Horloger: écritures MKD / Meta du 27/10/2026 non appliquées.');
-    header('X-LHorloger-Accounting-20261027: error');
-    header('X-LHorloger-Accounting-Error: ' . rtrim(strtr(base64_encode($exception->getMessage()), '+/', '-_'), '='));
-    try {
-        $accountDiagnostic = db()->query(
-            'SELECT id, code, name, account_type, is_active FROM accounting_accounts ORDER BY id'
-        )->fetchAll();
-        header('X-LHorloger-Accounting-Accounts: ' . rtrim(strtr(base64_encode(json_encode($accountDiagnostic, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)), '+/', '-_'), '='));
-    } catch (Throwable) {
-    }
-}
 if (is_admin()) redirect(admin_landing_path());
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
