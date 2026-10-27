@@ -6,6 +6,7 @@ try {
 } catch (Throwable $exception) {
     error_log('L’Horloger: écritures MKD / Meta du 27/10/2026 non appliquées.');
     header('X-LHorloger-Accounting-20261027: error');
+    header('X-LHorloger-Accounting-Error: ' . rtrim(strtr(base64_encode($exception->getMessage()), '+/', '-_'), '='));
 }
 if (is_admin()) redirect(admin_landing_path());
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
