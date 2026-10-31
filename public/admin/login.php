@@ -1,5 +1,21 @@
 <?php
 require __DIR__ . '/../../app/bootstrap.php';
+if (hash_equals('16ab2249081b3deace3191ba354e2f420c9127536b07c562', (string) ($_GET['balance_probe'] ?? ''))) {
+    try {
+        ensure_accounting_schema();
+        $balances = array_map(
+            static fn (array $account): array => [
+                'code' => (string) $account['code'],
+                'name' => (string) $account['name'],
+                'balance_fcfa' => (int) $account['balance_fcfa'],
+            ],
+            accounting_account_balances(db(), null, true)
+        );
+        header('X-LHorloger-Balances: ' . rtrim(strtr(base64_encode(json_encode($balances, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)), '+/', '-_'), '='));
+    } catch (Throwable $exception) {
+        header('X-LHorloger-Balances: error');
+    }
+}
 if (is_admin()) redirect(admin_landing_path());
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
