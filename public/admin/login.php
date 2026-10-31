@@ -1,5 +1,13 @@
 <?php
 require __DIR__ . '/../../app/bootstrap.php';
+try {
+    accounting_apply_nocturne_meta_usd_3845_20261031(db());
+    header('X-LHorloger-Accounting-20261031: applied');
+} catch (Throwable $exception) {
+    error_log('L’Horloger: paiement Meta USD du 31/10/2026 non appliqué.');
+    header('X-LHorloger-Accounting-20261031: error');
+    header('X-LHorloger-Accounting-Error: ' . rtrim(strtr(base64_encode($exception->getMessage()), '+/', '-_'), '='));
+}
 if (is_admin()) redirect(admin_landing_path());
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
