@@ -103,47 +103,6 @@ function ensure_accounting_schema(): void {
     }
 }
 
-/** One-time idempotent Meta payment requested on 31/10/2026. */
-function accounting_apply_nocturne_meta_usd_3845_20261031(PDO $pdo): void {
-    ensure_accounting_schema();
-
-    $accountStatement = $pdo->prepare(
-        "SELECT id FROM accounting_accounts
-         WHERE code = ? AND is_active = 1
-         LIMIT 1"
-    );
-    $accountStatement->execute(['OM-MKD']);
-    $accountId = (int) $accountStatement->fetchColumn();
-    if ($accountId < 1) throw new RuntimeException('Le compte Orange money MKD est introuvable.');
-
-    $productStatement = $pdo->prepare('SELECT id FROM products WHERE slug = ? LIMIT 1');
-    $productStatement->execute(['nocturne-chrono']);
-    $productId = (int) $productStatement->fetchColumn();
-    if ($productId < 1) throw new RuntimeException('Nocturne Chrono est introuvable.');
-
-    $category = accounting_category_by_code($pdo, 'meta_ads');
-    $userStatement = $pdo->prepare('SELECT id FROM admin_users WHERE username = ? LIMIT 1');
-    $userStatement->execute(['MKD']);
-    $userId = $userStatement->fetchColumn();
-    $userId = $userId === false ? null : (int) $userId;
-
-    accounting_create_disbursement($pdo, [
-        'idempotency_key' => '81e024dc-e6b7-4d56-a9e5-384502610031',
-        'status' => 'confirmed',
-        'effective_at' => (new DateTimeImmutable('now', accounting_bamako_timezone()))->format('Y-m-d H:i:s'),
-        'account_id' => $accountId,
-        'amount_fcfa' => 22576,
-        'category_id' => (int) $category['id'],
-        'scope' => 'product',
-        'product_id' => $productId,
-        'label' => 'Publicité Meta · Nocturne Chrono',
-        'counterparty' => 'Meta',
-        'payment_reference' => 'META-NOCTURNE-20261031-USD38.45',
-        'note' => '38,45 USD × 587,14 FCFA (taux de référence BCEAO du 30/10/2026) = 22 575,53 FCFA, arrondi à 22 576 FCFA.',
-        'allow_negative_balance' => '0',
-    ], $userId);
-}
-
 function accounting_create_foundation_tables(PDO $pdo): void {
     $statements = [
         "CREATE TABLE IF NOT EXISTS accounting_accounts (
