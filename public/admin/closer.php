@@ -34,14 +34,83 @@ $confirmedToday = (int) $confirmedStatement->fetchColumn();
 $whatsappStatement = $pdo->prepare('SELECT COUNT(*) FROM order_closer_tracking WHERE whatsapp_sent_at IS NOT NULL AND DATE(whatsapp_sent_at) = ?');
 $whatsappStatement->execute([$today]);
 $whatsappToday = (int) $whatsappStatement->fetchColumn();
-$tracking = $pdo->query(
+
+$closerIdentities = $pdo->query(
+    'SELECT DISTINCT closer_identity FROM order_closer_tracking ORDER BY closer_identity'
+)->fetchAll(PDO::FETCH_COLUMN);
+$historyStatuses = [
+    'all' => 'Tous les statuts',
+    'active' => 'À traiter',
+    'confirmed' => 'Confirmées',
+    'delivery' => 'En livraison',
+    'delivered' => 'Livrées',
+    'unreachable' => 'Injoignables',
+    'cancelled' => 'Annulées',
+];
+$historyPeriods = [
+    '7' => '7 derniers jours',
+    '30' => '30 derniers jours',
+    '90' => '90 derniers jours',
+    'all' => 'Toute la période',
+];
+$historySearch = trim((string) ($_GET['q'] ?? ''));
+$historySearch = function_exists('mb_substr') ? mb_substr($historySearch, 0, 80) : substr($historySearch, 0, 80);
+$historyStatus = (string) ($_GET['status'] ?? 'all');
+if (!array_key_exists($historyStatus, $historyStatuses)) $historyStatus = 'all';
+$historyPeriod = (string) ($_GET['period'] ?? '30');
+if (!array_key_exists($historyPeriod, $historyPeriods)) $historyPeriod = '30';
+$historyCloser = trim((string) ($_GET['closer'] ?? ''));
+if ($historyCloser !== '' && !in_array($historyCloser, $closerIdentities, true)) $historyCloser = '';
+
+$historyWhere = [];
+$historyParams = [];
+if ($historyPeriod !== 'all') {
+    $historyWhere[] = 't.updated_at >= DATE_SUB(NOW(), INTERVAL ' . (int) $historyPeriod . ' DAY)';
+}
+if ($historyCloser !== '') {
+    $historyWhere[] = 't.closer_identity = ?';
+    $historyParams[] = $historyCloser;
+}
+if ($historySearch !== '') {
+    $historyWhere[] = "CONCAT_WS(' ', o.order_ref, o.customer_first_name, o.customer_last_name, o.phone, o.district, o.product_name, o.variant) LIKE ?";
+    $historyParams[] = '%' . $historySearch . '%';
+}
+if ($historyStatus === 'active') {
+    $historyWhere[] = "t.follow_up_status IN ('À appeler', 'À rappeler', 'Confirmée') AND o.status NOT IN ('Annulée', 'En livraison', 'Livrée')";
+} elseif ($historyStatus === 'confirmed') {
+    $historyWhere[] = "t.follow_up_status = 'Confirmée' AND o.status NOT IN ('Annulée', 'En livraison', 'Livrée')";
+} elseif ($historyStatus === 'delivery') {
+    $historyWhere[] = "o.status = 'En livraison'";
+} elseif ($historyStatus === 'delivered') {
+    $historyWhere[] = "o.status = 'Livrée'";
+} elseif ($historyStatus === 'unreachable') {
+    $historyWhere[] = "t.follow_up_status = 'Injoignable'";
+} elseif ($historyStatus === 'cancelled') {
+    $historyWhere[] = "t.follow_up_status = 'Annulée'";
+}
+
+$historyWhereSql = $historyWhere ? ' WHERE ' . implode(' AND ', $historyWhere) : '';
+$historyCountStatement = $pdo->prepare(
+    'SELECT COUNT(*) FROM order_closer_tracking t JOIN orders o ON o.id = t.order_id' . $historyWhereSql
+);
+$historyCountStatement->execute($historyParams);
+$historyTotal = (int) $historyCountStatement->fetchColumn();
+$historyPerPage = 20;
+$historyPages = max(1, (int) ceil($historyTotal / $historyPerPage));
+$historyPage = max(1, (int) ($_GET['page'] ?? 1));
+$historyPage = min($historyPage, $historyPages);
+$historyOffset = ($historyPage - 1) * $historyPerPage;
+$trackingStatement = $pdo->prepare(
     "SELECT t.*, o.order_ref, o.customer_first_name, o.customer_last_name, o.phone, o.district,
             o.product_name, o.variant, o.quantity, o.unit_price_fcfa, o.status, o.acquisition_channel
      FROM order_closer_tracking t
-     JOIN orders o ON o.id = t.order_id
-     ORDER BY FIELD(t.follow_up_status, 'À appeler', 'À rappeler', 'Injoignable', 'Confirmée', 'Annulée', 'Livrée'),
-              t.follow_up_at IS NULL, t.follow_up_at, t.updated_at DESC"
-)->fetchAll();
+     JOIN orders o ON o.id = t.order_id" . $historyWhereSql . "
+     ORDER BY t.updated_at DESC, t.order_id DESC
+     LIMIT " . $historyPerPage . ' OFFSET ' . $historyOffset
+);
+$trackingStatement->execute($historyParams);
+$tracking = $trackingStatement->fetchAll();
+$historyQuery = ['q' => $historySearch, 'status' => $historyStatus, 'period' => $historyPeriod, 'closer' => $historyCloser];
 $courierWhatsapp = (string) app_setting('courier_whatsapp', '');
 $adminPageTitle = 'Suivi closeuse';
 require APP_ROOT . '/templates/admin-header.php';
@@ -81,6 +150,15 @@ require APP_ROOT . '/templates/admin-header.php';
 <section class="admin-panel" style="margin-top:15px">
   <p class="admin-kicker">Historique opérationnel</p>
   <h2>Commandes prises en charge.</h2>
+  <form class="accounting-filter closer-history-filter" method="get">
+    <label>Rechercher<input name="q" value="<?= e($historySearch) ?>" maxlength="80" placeholder="Client, téléphone, commande…"></label>
+    <label>Statut<select name="status"><?php foreach ($historyStatuses as $value => $label): ?><option value="<?= e($value) ?>" <?= $historyStatus === $value ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
+    <label>Closeuse<select name="closer"><option value="">Toutes</option><?php foreach ($closerIdentities as $identity): ?><option value="<?= e((string) $identity) ?>" <?= $historyCloser === $identity ? 'selected' : '' ?>><?= e((string) $identity) ?></option><?php endforeach; ?></select></label>
+    <label>Période<select name="period"><?php foreach ($historyPeriods as $value => $label): ?><option value="<?= e($value) ?>" <?= $historyPeriod === $value ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
+    <button class="admin-button" type="submit">Afficher</button>
+    <a class="accounting-reset" href="<?= e(url('/admin/closer.php')) ?>">Réinitialiser</a>
+  </form>
+  <p class="accounting-result-count"><?php if ($historyTotal): ?>Affichage de <?= $historyOffset + 1 ?> à <?= min($historyOffset + $historyPerPage, $historyTotal) ?> sur <?= $historyTotal ?> commande<?= $historyTotal === 1 ? '' : 's' ?>.<?php else: ?>Aucune commande ne correspond à ces filtres.<?php endif; ?></p>
   <div class="admin-table-wrap mobile-card-table-wrap">
     <table class="admin-table closer-admin-table mobile-card-table">
       <thead><tr><th>Closeuse</th><th>Commande</th><th>Client</th><th>Produit</th><th>Suivi</th><th>Rappel</th><th>Canal</th><th>Livraison</th></tr></thead>
@@ -88,7 +166,7 @@ require APP_ROOT . '/templates/admin-header.php';
       <?php foreach ($tracking as $item): ?>
         <tr class="mobile-card-row">
           <td data-label="Closeuse"><strong><?= e($item['closer_identity']) ?></strong></td>
-          <td data-label="Commande"><strong><?= e($item['order_ref']) ?></strong><br><small><?= e(date('d/m/Y H:i', strtotime($item['created_at']))) ?></small></td>
+          <td data-label="Commande"><strong><?= e($item['order_ref']) ?></strong><br><small>Prise en charge : <?= e(date('d/m/Y H:i', strtotime($item['created_at']))) ?></small><small>Dernière action : <?= e(date('d/m/Y H:i', strtotime($item['updated_at']))) ?></small></td>
           <td data-label="Client"><?= e($item['customer_first_name'] . ' ' . $item['customer_last_name']) ?><br><a href="tel:<?= e($item['phone']) ?>"><small><?= e($item['phone']) ?></small></a><br><small><?= e($item['district']) ?></small></td>
           <td data-label="Produit"><?= e($item['product_name']) ?><br><small><?= e($item['variant']) ?> · Qté <?= (int) $item['quantity'] ?></small></td>
           <td data-label="Suivi"><span class="status status-<?= e(strtolower(str_replace([' ', 'é', 'à'], ['-', 'e', 'a'], $item['follow_up_status']))) ?>"><?= e($item['follow_up_status']) ?></span><?php if ($item['note']): ?><br><small><?= e($item['note']) ?></small><?php endif; ?></td>
@@ -101,5 +179,14 @@ require APP_ROOT . '/templates/admin-header.php';
       </tbody>
     </table>
   </div>
+  <?php if ($historyPages > 1): $pageStart = max(1, $historyPage - 2); $pageEnd = min($historyPages, $historyPage + 2); ?>
+    <nav class="accounting-pagination" aria-label="Pages de l’historique closeuse">
+      <?php if ($historyPage > 1): ?><a href="?<?= e(http_build_query(array_merge($historyQuery, ['page' => $historyPage - 1]))) ?>" aria-label="Page précédente">←</a><?php endif; ?>
+      <?php if ($pageStart > 1): ?><a href="?<?= e(http_build_query(array_merge($historyQuery, ['page' => 1]))) ?>">1</a><?php endif; ?>
+      <?php for ($pageNumber = $pageStart; $pageNumber <= $pageEnd; $pageNumber++): ?><a class="<?= $pageNumber === $historyPage ? 'active' : '' ?>" href="?<?= e(http_build_query(array_merge($historyQuery, ['page' => $pageNumber]))) ?>" <?= $pageNumber === $historyPage ? 'aria-current="page"' : '' ?>><?= $pageNumber ?></a><?php endfor; ?>
+      <?php if ($pageEnd < $historyPages): ?><a href="?<?= e(http_build_query(array_merge($historyQuery, ['page' => $historyPages]))) ?>"><?= $historyPages ?></a><?php endif; ?>
+      <?php if ($historyPage < $historyPages): ?><a href="?<?= e(http_build_query(array_merge($historyQuery, ['page' => $historyPage + 1]))) ?>" aria-label="Page suivante">→</a><?php endif; ?>
+    </nav>
+  <?php endif; ?>
 </section>
 <?php require APP_ROOT . '/templates/admin-footer.php'; ?>
