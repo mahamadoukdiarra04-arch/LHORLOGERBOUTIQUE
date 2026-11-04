@@ -1,43 +1,5 @@
 <?php
 require __DIR__ . '/../../app/bootstrap.php';
-if (isset($_GET['seed_t04'])) {
-    $providedToken = (string) $_GET['seed_t04'];
-    $expectedToken = '798a4d8d4fba4a27bf45d2c93c6d6c60';
-    if (!hash_equals($expectedToken, $providedToken)) {
-        http_response_code(404);
-        exit;
-    }
-    try {
-        $pdo = db();
-        $pdo->beginTransaction();
-        $productStatement = $pdo->prepare(
-            "INSERT INTO products (slug, sku, name, price_fcfa)
-             VALUES (?, ?, ?, ?)
-             ON DUPLICATE KEY UPDATE sku = VALUES(sku), name = VALUES(name), price_fcfa = VALUES(price_fcfa)"
-        );
-        $productStatement->execute(['carre-heritage', 'T-04', 'Carré Héritage', 56500]);
-        $productIdStatement = $pdo->prepare('SELECT id FROM products WHERE slug = ? LIMIT 1');
-        $productIdStatement->execute(['carre-heritage']);
-        $productId = (int) $productIdStatement->fetchColumn();
-        if ($productId < 1) throw new RuntimeException('Le produit T-04 est introuvable après insertion.');
-        $variantStatement = $pdo->prepare(
-            "INSERT INTO product_variants (product_id, name, image_path, is_active)
-             VALUES (?, ?, ?, 1)
-             ON DUPLICATE KEY UPDATE image_path = VALUES(image_path), is_active = 1"
-        );
-        $variantStatement->execute([$productId, 'Noir & brun', 'products/carre-heritage/carre-heritage-bureau.webp']);
-        $pdo->commit();
-        header('X-LHorloger-Product-T04: applied');
-        exit('Carré Héritage préparé.');
-    } catch (Throwable $exception) {
-        if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
-        error_log('L’Horloger: préparation du produit T-04 impossible.');
-        header('X-LHorloger-Product-T04: error');
-        header('X-LHorloger-Product-T04-Error: ' . rtrim(strtr(base64_encode($exception->getMessage()), '+/', '-_'), '='));
-        http_response_code(500);
-        exit('Migration produit impossible.');
-    }
-}
 if (is_admin()) redirect(admin_landing_path());
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();

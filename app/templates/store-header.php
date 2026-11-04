@@ -11,7 +11,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="<?= e(url('/favicon-192.png')) ?>">
   <link rel="apple-touch-icon" sizes="180x180" href="<?= e(url('/apple-touch-icon.png')) ?>">
   <meta name="theme-color" content="#11100f">
-  <link rel="stylesheet" href="<?= e(url('/assets/css/app.css')) ?>">
+  <link rel="stylesheet" href="<?= e(url('/assets/css/app.css')) ?>?v=20261104-carre-heritage">
   <link rel="stylesheet" href="<?= e(url('/assets/css/brand.css')) ?>">
   <link rel="stylesheet" href="<?= e(url('/assets/css/store-responsive.css')) ?>?v=20260913-product-ratings">
   <!-- Meta Pixel Code -->

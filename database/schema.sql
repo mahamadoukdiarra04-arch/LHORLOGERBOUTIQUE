@@ -187,7 +187,8 @@ CREATE TABLE IF NOT EXISTS closer_delivery_batch_orders (
 INSERT IGNORE INTO products (id, slug, sku, name, price_fcfa) VALUES
   (1, 'nocturne-chrono', 'T-01', 'Nocturne Chrono', 52000),
   (2, 'azur-squelette', 'T-02', 'Azur Squelette', 62000),
-  (3, 'eclipse-lunaire', 'T-03', 'Éclipse Lunaire', 59000);
+  (3, 'eclipse-lunaire', 'T-03', 'Éclipse Lunaire', 59000),
+  (4, 'carre-heritage', 'T-04', 'Carré Héritage', 56500);
 
 -- Comptabilité & trésorerie — fondation. Les installations existantes sont
 -- mises à niveau de façon idempotente par app/accounting.php.
