@@ -7,6 +7,8 @@ $pushError = null; $summary = [];
 try {
     require_once APP_ROOT . '/push.php';
     push_schema(db()); push_keys(db());
+    try { $recoveryCheck = count(push_missing_order_refs(db())) . ' commande(s) à récupérer.'; }
+    catch (Throwable $error) { $recoveryCheck = push_safe_diagnostic(get_class($error) . ': ' . $error->getMessage()); }
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         verify_csrf();
         $jobId = (int) ($_POST['test_job_id'] ?? 0);
@@ -36,6 +38,7 @@ require APP_ROOT . '/templates/admin-header.php';
 <?php foreach ($jobs as $job): ?><tr><td>PUSH-<?= (int) $job['id'] ?></td><td><?= e($job['state']) ?></td><td><?= (int) $job['attempts'] ?></td><td><?php if (str_starts_with($job['event_key'], 'test-') && $job['state'] === 'pending'): ?><form method="post"><?= csrf_field() ?><input type="hidden" name="test_job_id" value="<?= (int) $job['id'] ?>"><button class="admin-button">Relancer ce test</button></form><?php endif; ?></td></tr><?php endforeach; ?>
 </tbody></table></div>
 <h2>Diagnostic privé</h2><ul><?php foreach ($diagnostics as $diagnostic): ?><li style="overflow-wrap:anywhere"><?= e($diagnostic['created_at']) ?> · PUSH-<?= (int) $diagnostic['job_id'] ?> · HTTP <?= e((string) $diagnostic['http_status']) ?> · <?= e($diagnostic['diagnostic']) ?></li><?php endforeach; ?></ul>
+<p style="overflow-wrap:anywhere">Contrôle du chemin automatique : <?= e($recoveryCheck) ?></p>
 <h2>Reprises automatiques</h2><p>Dans Hostinger, programmer toutes les minutes la commande suivante (PHP 8.2+) :</p>
 <pre style="white-space:pre-wrap;overflow-wrap:anywhere"><?= e('/usr/bin/php ' . APP_ROOT . '/push-worker.php') ?></pre>
 <p>Sans cette tâche cron, les alertes partent à chaque commande mais les reprises après échec attendent une visite ou une nouvelle commande.</p>

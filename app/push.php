@@ -108,16 +108,24 @@ function push_dispatch(PDO $pdo, int $limit = 10, ?int $onlyJobId = null): int {
 function push_dispatch_run(PDO $pdo, int $limit = 10, ?int $onlyJobId = null): int {
     push_schema($pdo);
     // Recover a missed queue insertion without notifying about orders preceding activation.
-    $references = $onlyJobId !== null ? [] : $pdo->query("SELECT DISTINCT o.order_ref FROM orders o
+    $references = $onlyJobId !== null ? [] : push_missing_order_refs($pdo);
+    foreach ($references as $reference) {
+        // Do not register another shutdown callback from the worker.
+        push_queue_order_recovery($pdo, $reference);
+    }
+    return push_dispatch_jobs($pdo, $limit, $onlyJobId);
+}
+
+function push_missing_order_refs(PDO $pdo): array {
+    return $pdo->query("SELECT DISTINCT o.order_ref FROM orders o
         WHERE o.created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY) AND o.status = 'À confirmer'
         AND EXISTS (SELECT 1 FROM web_push_subscriptions s JOIN admin_users u ON u.id = s.user_id
             WHERE s.active = 1 AND u.is_active = 1 AND u.role = 'closer' AND s.created_at <= o.created_at
             AND NOT EXISTS (SELECT 1 FROM web_push_jobs j WHERE j.subscription_id = s.id AND j.event_key = CONCAT('order-', o.order_ref)))
         LIMIT 30")->fetchAll(PDO::FETCH_COLUMN);
-    foreach ($references as $reference) {
-        // Do not register another shutdown callback from the worker.
-        push_queue_order_recovery($pdo, $reference);
-    }
+}
+
+function push_dispatch_jobs(PDO $pdo, int $limit, ?int $onlyJobId): int {
     if (!(int) $pdo->query("SELECT COUNT(*) FROM web_push_jobs WHERE state = 'pending' AND available_at <= NOW()")->fetchColumn()) return 0;
     if (!(int) $pdo->query("SELECT GET_LOCK('lhorloger_web_push', 0)")->fetchColumn()) return 0;
     $sent = 0;
