@@ -21,13 +21,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } catch (Throwable $error) { flash('error', $error->getMessage()); }
     redirect('/admin/meta-recovery.php');
 }
-$rows = meta_capi_purchase_audit($pdo);
+$auditError = null;
+try { $rows = meta_capi_purchase_audit($pdo); }
+catch (Throwable $error) { $rows = []; $auditError = $error->getMessage(); }
 $states = $pdo->query('SELECT event_name, status, COUNT(*) AS total FROM meta_capi_events GROUP BY event_name, status ORDER BY event_name, status')->fetchAll();
 $adminPageTitle = 'Contrôle des dates et achats Meta';
 require APP_ROOT . '/templates/admin-header.php';
 ?>
 <header class="admin-page-head"><div><p class="admin-kicker">Meta · Contrôle</p><h1>Achats réels des sept derniers jours</h1></div><a class="text-link" href="/admin/meta-capi.php">Signaux Meta</a></header>
 <section class="admin-panel">
+<?php if ($auditError): ?><p class="flash flash-error"><?= e($auditError) ?></p><?php endif; ?>
 <p>Seules les commandes entièrement livrées et encaissées, sans remboursement actif, sont éligibles. La date est le plus tardif entre la livraison et l’encaissement intégral réel. Les encaissements contrepassés sont exclus ; leurs remplacements datés sont pris en compte.</p>
 <p>Les signaux déjà acceptés ne sont ni modifiés ni renvoyés. Les signaux non transmis sans preuve ou hors délai sont bloqués. Aucun statut, stock ou compte comptable ne change. ConfirmedOrder reste l’objectif de campagne.</p>
 <form method="post"><?= csrf_field() ?><button class="admin-button" type="submit">Corriger les dates et envoyer les achats récents manquants</button></form>
