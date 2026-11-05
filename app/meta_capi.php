@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__ . '/meta_event_facts.php';
 
 /**
  * Meta Conversions API is intentionally kept behind an outbox.  A temporary
@@ -136,16 +137,21 @@ function meta_capi_order_attribution(array $input): array {
     ];
 }
 
-function meta_capi_queue_order_event(PDO $pdo, string $orderRef, string $eventKey, ?int $valueFcfa = null): void {
+function meta_capi_queue_order_event(PDO $pdo, string $orderRef, string $eventKey, ?int $valueFcfa = null, bool $dispatch = true): void {
     ensure_meta_capi_schema($pdo);
     $eventName = meta_capi_event_name($eventKey);
+    $facts = meta_capi_event_facts($pdo, $orderRef, $eventKey);
+    if (!$facts) throw new RuntimeException('Date métier ou encaissement non vérifiable. Aucun évènement créé.');
+    if (!meta_capi_is_recent($facts['occurred_at'])) throw new RuntimeException('Date réelle hors délai de 7 jours.');
+    $valueFcfa = $facts['value_fcfa'] ?? $valueFcfa;
     $statement = $pdo->prepare(
         'INSERT INTO meta_capi_events (order_ref, event_key, event_name, event_id, value_fcfa, occurred_at)
-         VALUES (?, ?, ?, ?, ?, NOW())
-         ON DUPLICATE KEY UPDATE value_fcfa = COALESCE(VALUES(value_fcfa), value_fcfa), updated_at = CURRENT_TIMESTAMP'
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE occurred_at = IF(status = "sent", occurred_at, VALUES(occurred_at)),
+         value_fcfa = IF(status = "sent", value_fcfa, COALESCE(VALUES(value_fcfa), value_fcfa))'
     );
-    $statement->execute([$orderRef, $eventKey, $eventName, meta_capi_event_id($orderRef, $eventKey), $valueFcfa]);
-    if (meta_capi_is_configured()) meta_capi_dispatch_pending($pdo, 4);
+    $statement->execute([$orderRef, $eventKey, $eventName, meta_capi_event_id($orderRef, $eventKey), $valueFcfa, $facts['occurred_at']]);
+    if ($dispatch && meta_capi_is_configured()) meta_capi_dispatch_pending($pdo, 4);
 }
 
 function meta_capi_hash(?string $value): ?string {
@@ -193,7 +199,7 @@ function meta_capi_payload_for_event(PDO $pdo, array $event): array {
     $value = $event['value_fcfa'] !== null ? (int) $event['value_fcfa'] : $total;
     return [
         'event_name' => (string) $event['event_name'],
-        'event_time' => max(1, strtotime((string) $event['occurred_at']) ?: time()),
+        'event_time' => meta_capi_timestamp((string) $event['occurred_at']),
         'event_id' => (string) $event['event_id'],
         'action_source' => 'website',
         'event_source_url' => $first['meta_landing_url'] ?: url('/'),
@@ -206,16 +212,28 @@ function meta_capi_payload_for_event(PDO $pdo, array $event): array {
     ];
 }
 
-function meta_capi_dispatch_pending(PDO $pdo, int $limit = 20): int {
+function meta_capi_dispatch_pending(PDO $pdo, int $limit = 20, ?string $onlyEventKey = null): int {
     ensure_meta_capi_schema($pdo);
     if (!meta_capi_is_configured()) return 0;
+    if (!(int) $pdo->query("SELECT GET_LOCK('lhorloger_meta_dispatch', 0)")->fetchColumn()) return 0;
+    try {
     $settings = meta_capi_config();
     $limit = max(1, min(50, $limit));
-    $events = $pdo->query("SELECT * FROM meta_capi_events WHERE status IN ('pending', 'failed') ORDER BY id ASC LIMIT " . $limit)->fetchAll();
+    $filter = $onlyEventKey === null ? '' : ' AND event_key = ' . $pdo->quote($onlyEventKey);
+    $events = $pdo->query("SELECT * FROM meta_capi_events WHERE status IN ('pending', 'failed')" . $filter . " ORDER BY id ASC LIMIT " . $limit)->fetchAll();
     $delivered = 0;
     foreach ($events as $event) {
         $httpStatus = null; $error = null; $successful = false;
         try {
+            $facts = meta_capi_event_facts($pdo, $event['order_ref'], $event['event_key']);
+            if (!$facts || !meta_capi_is_recent($facts['occurred_at'])) {
+                $pdo->prepare('UPDATE meta_capi_events SET status = ?, last_error = ? WHERE id = ?')->execute([
+                    $facts ? 'expired' : 'unverified', $facts ? 'Date réelle hors délai de 7 jours.' : 'Date métier ou encaissement non vérifiable.', $event['id']]);
+                continue;
+            }
+            $event['occurred_at'] = $facts['occurred_at'];
+            $event['value_fcfa'] = $facts['value_fcfa'] ?? $event['value_fcfa'];
+            $pdo->prepare('UPDATE meta_capi_events SET occurred_at = ?, value_fcfa = ? WHERE id = ? AND status <> "sent"')->execute([$event['occurred_at'], $event['value_fcfa'], $event['id']]);
             if (!function_exists('curl_init')) throw new RuntimeException('cURL n’est pas disponible sur le serveur.');
             $payload = ['data' => [meta_capi_payload_for_event($pdo, $event)]];
             if ($settings['test_event_code'] !== '') $payload['test_event_code'] = $settings['test_event_code'];
@@ -236,4 +254,5 @@ function meta_capi_dispatch_pending(PDO $pdo, int $limit = 20): int {
         if ($successful) $delivered++;
     }
     return $delivered;
+    } finally { $pdo->query("SELECT RELEASE_LOCK('lhorloger_meta_dispatch')"); }
 }
