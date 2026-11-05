@@ -22,6 +22,11 @@ function push_schema(PDO $pdo): void {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, sent_at DATETIME NULL,
         UNIQUE KEY unique_delivery (subscription_id, event_key), INDEX due_jobs (state, available_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS web_push_diagnostics (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, job_id BIGINT UNSIGNED NULL,
+        http_status SMALLINT UNSIGNED NULL, diagnostic VARCHAR(500) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     $ready = true;
 }
 
@@ -81,10 +86,29 @@ function push_queue_order(PDO $pdo, string $reference): void {
     push_schedule_dispatch();
 }
 
-function push_dispatch(PDO $pdo, int $limit = 10): int {
+function push_safe_diagnostic(string $message): string {
+    $message = preg_replace('~https?://[^\s"<>]+~i', '[adresse masquée]', $message);
+    $message = preg_replace('/[A-Za-z0-9_\\-]{32,}/', '[identifiant masqué]', $message);
+    return mb_substr($message, 0, 500);
+}
+
+function push_diagnostic(PDO $pdo, ?int $jobId, ?int $httpStatus, string $message): void {
+    $pdo->prepare('INSERT INTO web_push_diagnostics (job_id, http_status, diagnostic) VALUES (?, ?, ?)')
+        ->execute([$jobId, $httpStatus, push_safe_diagnostic($message)]);
+}
+
+function push_dispatch(PDO $pdo, int $limit = 10, ?int $onlyJobId = null): int {
+    try { return push_dispatch_run($pdo, $limit, $onlyJobId); }
+    catch (Throwable $error) {
+        try { push_diagnostic($pdo, $onlyJobId, null, get_class($error) . ': ' . $error->getMessage()); } catch (Throwable) {}
+        throw $error;
+    }
+}
+
+function push_dispatch_run(PDO $pdo, int $limit = 10, ?int $onlyJobId = null): int {
     push_schema($pdo);
     // Recover a missed queue insertion without notifying about orders preceding activation.
-    $references = $pdo->query("SELECT DISTINCT o.order_ref FROM orders o
+    $references = $onlyJobId !== null ? [] : $pdo->query("SELECT DISTINCT o.order_ref FROM orders o
         WHERE o.created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY) AND o.status = 'À confirmer'
         AND EXISTS (SELECT 1 FROM web_push_subscriptions s JOIN admin_users u ON u.id = s.user_id
             WHERE s.active = 1 AND u.is_active = 1 AND u.role = 'closer' AND s.created_at <= o.created_at
@@ -105,7 +129,7 @@ function push_dispatch(PDO $pdo, int $limit = 10): int {
         $jobs = $pdo->query("SELECT j.*, s.subscription_json, s.active, u.is_active AS user_active, u.role
             FROM web_push_jobs j JOIN web_push_subscriptions s ON s.id = j.subscription_id
             JOIN admin_users u ON u.id = s.user_id
-            WHERE j.state = 'pending' AND j.available_at <= NOW() ORDER BY j.id LIMIT " . max(1, min(30, $limit)))->fetchAll();
+            WHERE j.state = 'pending' AND j.available_at <= NOW()" . ($onlyJobId !== null ? ' AND j.id = ' . (int) $onlyJobId : '') . " ORDER BY j.id LIMIT " . max(1, min(30, $limit)))->fetchAll();
         foreach ($jobs as $job) {
             if (!$job['active'] || !$job['user_active'] || $job['role'] !== 'closer' || strtotime($job['created_at']) < time() - 86400) {
                 $pdo->prepare("UPDATE web_push_jobs SET state = 'expired' WHERE id = ?")->execute([$job['id']]);
@@ -115,6 +139,7 @@ function push_dispatch(PDO $pdo, int $limit = 10): int {
                 $subscription = \Minishlink\WebPush\Subscription::create(push_validate_subscription(json_decode($job['subscription_json'], true, 16, JSON_THROW_ON_ERROR)));
                 $report = $client->sendOneNotification($subscription, $job['payload']);
                 if ($report->isSuccess()) {
+                    push_diagnostic($pdo, (int) $job['id'], $report->getResponse()?->getStatusCode(), 'Acceptée par le service push');
                     $pdo->prepare("UPDATE web_push_jobs SET state = 'sent', sent_at = NOW(), attempts = attempts + 1 WHERE id = ?")->execute([$job['id']]);
                     $sent++;
                     continue;
@@ -122,7 +147,12 @@ function push_dispatch(PDO $pdo, int $limit = 10): int {
                 if ($report->isSubscriptionExpired()) {
                     $pdo->prepare('UPDATE web_push_subscriptions SET active = 0 WHERE id = ?')->execute([$job['subscription_id']]);
                 }
-            } catch (Throwable) { /* Retry without logging endpoints or keys. */ }
+                $body = json_decode((string) $report->getResponseContent(), true);
+                $reason = is_array($body) ? ($body['reason'] ?? 'Réponse non acceptée') : 'Réponse non acceptée';
+                push_diagnostic($pdo, (int) $job['id'], $report->getResponse()?->getStatusCode(), is_string($reason) ? $reason : 'Réponse non acceptée');
+            } catch (Throwable $error) {
+                push_diagnostic($pdo, (int) $job['id'], null, get_class($error) . ': ' . $error->getMessage());
+            }
             $delay = min(3600, 60 * (2 ** min(6, (int) $job['attempts'])));
             $pdo->prepare("UPDATE web_push_jobs SET attempts = attempts + 1, available_at = DATE_ADD(NOW(), INTERVAL $delay SECOND), state = IF(attempts >= 8, 'failed', 'pending') WHERE id = ?")->execute([$job['id']]);
         }

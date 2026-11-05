@@ -3,8 +3,8 @@ require __DIR__ . '/../../app/bootstrap.php';
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 if (!is_closer()) { http_response_code(403); echo json_encode(['error' => 'Connectez-vous avec votre compte closeuse.']); exit; }
-require_once APP_ROOT . '/push.php';
 try {
+    require_once APP_ROOT . '/push.php';
     $pdo = db(); push_schema($pdo);
     $userId = (int) ($_SESSION['admin_user_id'] ?? 0);
     if (!$userId) throw new RuntimeException('Session à renouveler.');
@@ -29,11 +29,15 @@ try {
         if (($_SESSION['push_test_at'] ?? 0) > time() - 60) throw new RuntimeException('Attendez une minute avant un nouveau test.');
         $_SESSION['push_test_at'] = time();
         $pdo->prepare('INSERT INTO web_push_jobs (subscription_id, event_key, payload, available_at) VALUES (?, ?, ?, NOW())')->execute([$id, 'test-' . bin2hex(random_bytes(8)), json_encode(['title' => 'L’Horloger · Test', 'body' => 'Les notifications sont bien activées.', 'tag' => 'push-test', 'url' => '/closer/'], JSON_THROW_ON_ERROR)]);
+        $testJobId = (int) $pdo->lastInsertId();
         session_write_close();
-        if (push_dispatch($pdo) < 1) throw new RuntimeException('Le test est en attente. Réessayez dans une minute.');
+        push_dispatch($pdo, 1, $testJobId);
+        $query = $pdo->prepare('SELECT state FROM web_push_jobs WHERE id = ?'); $query->execute([$testJobId]);
+        if ($query->fetchColumn() !== 'sent') throw new RuntimeException('Test non accepté pour l’instant (PUSH-' . $testJobId . '). Le diagnostic est disponible dans la gestion.');
     } else { throw new RuntimeException('Action inconnue.'); }
     echo json_encode(['ok' => true]);
 } catch (Throwable $error) {
     http_response_code(400);
+    try { if (isset($pdo)) push_diagnostic($pdo, $testJobId ?? null, null, get_class($error) . ': ' . $error->getMessage()); } catch (Throwable) {}
     echo json_encode(['error' => $error instanceof RuntimeException && !($error instanceof PDOException) ? $error->getMessage() : 'Notifications momentanément indisponibles. Réessayez.']);
 }
