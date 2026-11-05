@@ -10,6 +10,10 @@ $closerPath = $_SERVER['SCRIPT_NAME'] ?? '';
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><?= e($closerPageTitle) ?> · L’Horloger</title>
+  <link rel="manifest" href="/closer/manifest.webmanifest">
+  <meta name="theme-color" content="#123b63">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <link rel="apple-touch-icon" href="/favicon-192.png">
   <link rel="icon" href="<?= e(url('/favicon.ico')) ?>" sizes="any">
   <link rel="icon" type="image/png" sizes="48x48" href="<?= e(url('/favicon-48.png')) ?>">
   <link rel="stylesheet" href="<?= e(url('/assets/css/app.css')) ?>">
@@ -26,5 +30,6 @@ $closerPath = $_SERVER['SCRIPT_NAME'] ?? '';
     <div><span><?= e(admin_identity()) ?></span><a href="<?= e(url('/admin/logout.php')) ?>">Déconnexion</a></div>
   </header>
   <main class="closer-main">
+    <?php require APP_ROOT . '/templates/closer-push-panel.php'; ?>
     <?php if ($message = flash('success')): ?><p class="flash flash-success"><?= e($message) ?></p><?php endif; ?>
     <?php if ($message = flash('error')): ?><p class="flash flash-error"><?= e($message) ?></p><?php endif; ?>

@@ -1,0 +1,6 @@
+{
+  "id": "/closer/", "name": "L’Horloger · Closeuse", "short_name": "L’Horloger",
+  "lang": "fr", "start_url": "/closer/", "scope": "/closer/", "display": "standalone",
+  "background_color": "#f5f8fc", "theme_color": "#123b63",
+  "icons": [{"src": "/favicon-192.png", "sizes": "192x192", "type": "image/png"}]
+}

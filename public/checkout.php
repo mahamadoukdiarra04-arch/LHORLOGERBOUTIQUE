@@ -37,7 +37,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $ref = 'HOR-' . date('ymd') . '-' . random_int(100000, 999999);
         try {
             $attribution = meta_capi_order_attribution($_POST);
-            $pdo = db(); ensure_meta_capi_schema($pdo); $pdo->beginTransaction();
+            $pdo = db(); ensure_meta_capi_schema($pdo);
+            // MySQL DDL must finish before the order transaction begins.
+            $pushReady = false;
+            try { require_once APP_ROOT . '/push.php'; push_schema($pdo); $pushReady = true; }
+            catch (Throwable) { error_log('LHorloger: préparation push indisponible.'); }
+            $pdo->beginTransaction();
             $find = $pdo->prepare('SELECT id FROM products WHERE slug = ?');
             $insert = $pdo->prepare('INSERT INTO orders (order_ref, customer_first_name, customer_last_name, phone, district, product_id, product_name, variant, quantity, unit_price_fcfa, meta_fbc, meta_fbp, meta_client_ip, meta_client_user_agent, meta_landing_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
             foreach ($validated as $line) {
@@ -46,6 +51,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $p = $line['product'];
                 $insert->execute([$ref, $first, $last, $phone, $district, $id, $p['name'], $line['variant'], $line['quantity'], $p['price'], $attribution['fbc'], $attribution['fbp'], $attribution['ip'], $attribution['user_agent'], $attribution['landing_url']]);
             }
+            // Queue with the order transaction: one event per order, not per item.
+            try { if ($pushReady) push_queue_order($pdo, $ref); }
+            catch (Throwable $pushException) { error_log('LHorloger: mise en file push indisponible.'); }
             $pdo->commit();
             try { meta_capi_queue_order_event($pdo, $ref, 'lead'); } catch (Throwable $metaException) { error_log('L’Horloger: signal Meta Lead différé.'); }
             $_SESSION['latest_order_ref'] = $ref; $_SESSION['latest_first_name'] = $first;
