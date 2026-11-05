@@ -27,3 +27,8 @@ check(strpos($checkout, 'push_queue_order($pdo, $ref)') < strpos($checkout, '$pd
 check(substr_count($checkout, 'push_queue_order($pdo, $ref)') === 1, 'One event per checkout');
 $worker = file_get_contents(dirname(__DIR__) . '/public/closer/sw.js');
 check(!str_contains($worker, "addEventListener('fetch'"), 'No private-page caching');
+$pushSource = file_get_contents(dirname(__DIR__) . '/app/push.php');
+check(str_contains($pushSource, "BINARY j.event_key = BINARY CONCAT('order-', o.order_ref)"), 'Mixed Hostinger collations handled by exact binary reference comparison');
+$endpointSource = file_get_contents(dirname(__DIR__) . '/public/closer/push.php');
+check(str_contains($endpointSource, 'push_dispatch($pdo, 1, $testJobId)'), 'Test targets this device job only');
+check(str_contains($endpointSource, "SELECT state FROM web_push_jobs WHERE id = ?"), 'Test verifies its own result, not another delivery');

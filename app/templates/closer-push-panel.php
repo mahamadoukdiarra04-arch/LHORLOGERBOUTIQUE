@@ -8,4 +8,4 @@
     <button type="button" class="closer-button secondary" data-push-disable hidden style="min-height:48px">Désactiver</button>
   </div>
 </section>
-<script src="/assets/js/closer-push.js?v=20261105" defer></script>
+<script src="/assets/js/closer-push.js?v=20261105-iphone-fix" defer></script>

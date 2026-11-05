@@ -10,7 +10,10 @@
   const key = value => Uint8Array.from(atob(value.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
   async function post(action) {
     const response = await fetch('/closer/push.php', {method: 'POST', credentials: 'same-origin', body: new URLSearchParams({action, csrf: config.csrf, subscription: JSON.stringify(subscription)})});
-    const result = await response.json();
+    if (response.status === 419 || response.status === 403) throw new Error('Votre session a expiré. Reconnectez-vous puis rechargez cet espace.');
+    let result;
+    try { result = await response.json(); }
+    catch (_) { throw new Error('Réponse du serveur indisponible (HTTP ' + response.status + '). Réessayez dans un instant.'); }
     if (!response.ok) throw new Error(result.error || 'Action impossible. Reconnectez-vous puis réessayez.');
   }
   function buttons(active) { enable.hidden = active; test.hidden = !active; disable.hidden = !active; }

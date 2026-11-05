@@ -93,8 +93,11 @@ function push_safe_diagnostic(string $message): string {
 }
 
 function push_diagnostic(PDO $pdo, ?int $jobId, ?int $httpStatus, string $message): void {
-    $pdo->prepare('INSERT INTO web_push_diagnostics (job_id, http_status, diagnostic) VALUES (?, ?, ?)')
-        ->execute([$jobId, $httpStatus, push_safe_diagnostic($message)]);
+    // Diagnostics must not turn an accepted notification into a retry.
+    try {
+        $pdo->prepare('INSERT INTO web_push_diagnostics (job_id, http_status, diagnostic) VALUES (?, ?, ?)')
+            ->execute([$jobId, $httpStatus, push_safe_diagnostic($message)]);
+    } catch (Throwable) { error_log('LHorloger: diagnostic push indisponible.'); }
 }
 
 function push_dispatch(PDO $pdo, int $limit = 10, ?int $onlyJobId = null): int {
@@ -108,10 +111,14 @@ function push_dispatch(PDO $pdo, int $limit = 10, ?int $onlyJobId = null): int {
 function push_dispatch_run(PDO $pdo, int $limit = 10, ?int $onlyJobId = null): int {
     push_schema($pdo);
     // Recover a missed queue insertion without notifying about orders preceding activation.
-    $references = $onlyJobId !== null ? [] : push_missing_order_refs($pdo);
-    foreach ($references as $reference) {
-        // Do not register another shutdown callback from the worker.
-        push_queue_order_recovery($pdo, $reference);
+    try {
+        $references = $onlyJobId !== null ? [] : push_missing_order_refs($pdo);
+        foreach ($references as $reference) {
+            // Do not register another shutdown callback from the worker.
+            push_queue_order_recovery($pdo, $reference);
+        }
+    } catch (Throwable $error) {
+        push_diagnostic($pdo, null, null, 'Récupération : ' . $error->getMessage());
     }
     return push_dispatch_jobs($pdo, $limit, $onlyJobId);
 }
@@ -121,7 +128,7 @@ function push_missing_order_refs(PDO $pdo): array {
         WHERE o.created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY) AND o.status = 'À confirmer'
         AND EXISTS (SELECT 1 FROM web_push_subscriptions s JOIN admin_users u ON u.id = s.user_id
             WHERE s.active = 1 AND u.is_active = 1 AND u.role = 'closer' AND s.created_at <= o.created_at
-            AND NOT EXISTS (SELECT 1 FROM web_push_jobs j WHERE j.subscription_id = s.id AND j.event_key = CONCAT('order-', o.order_ref)))
+            AND NOT EXISTS (SELECT 1 FROM web_push_jobs j WHERE j.subscription_id = s.id AND BINARY j.event_key = BINARY CONCAT('order-', o.order_ref)))
         LIMIT 30")->fetchAll(PDO::FETCH_COLUMN);
 }
 
