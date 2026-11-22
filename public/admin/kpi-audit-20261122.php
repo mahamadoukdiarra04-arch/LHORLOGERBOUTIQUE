@@ -13,8 +13,8 @@ try {
     $end = '2026-11-22 00:00:00';
 
     $created = $pdo->prepare(
-        'SELECT p.name AS product, o.status, COUNT(*) AS lines,
-                COUNT(DISTINCT o.order_ref) AS orders, COALESCE(SUM(o.quantity), 0) AS units
+        'SELECT p.name AS product, o.status, COUNT(*) AS line_count,
+                COUNT(DISTINCT o.order_ref) AS order_count, COALESCE(SUM(o.quantity), 0) AS unit_count
          FROM orders o JOIN products p ON p.id = o.product_id
          WHERE o.created_at >= ? AND o.created_at < ?
          GROUP BY p.id, p.name, o.status
@@ -24,8 +24,8 @@ try {
 
     $delivered = $pdo->prepare(
         'SELECT p.name AS product, COALESCE(o.acquisition_channel, "Unspecified") AS channel,
-                COUNT(*) AS lines, COUNT(DISTINCT o.order_ref) AS orders,
-                COALESCE(SUM(o.quantity), 0) AS units,
+                COUNT(*) AS line_count, COUNT(DISTINCT o.order_ref) AS order_count,
+                COALESCE(SUM(o.quantity), 0) AS unit_count,
                 COALESCE(SUM(o.quantity * o.unit_price_fcfa), 0) AS order_value_fcfa
          FROM orders o JOIN products p ON p.id = o.product_id
          WHERE o.status = "Livrée"
@@ -37,7 +37,7 @@ try {
     $delivered->execute([$start, $end]);
 
     $createdDaily = $pdo->prepare(
-        'SELECT DATE(o.created_at) AS day, o.status, COUNT(DISTINCT o.order_ref) AS orders
+        'SELECT DATE(o.created_at) AS day, o.status, COUNT(DISTINCT o.order_ref) AS order_count
          FROM orders o
          WHERE o.created_at >= ? AND o.created_at < ?
          GROUP BY DATE(o.created_at), o.status
