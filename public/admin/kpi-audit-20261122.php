@@ -54,5 +54,5 @@ try {
 } catch (Throwable $exception) {
     error_log('KPI audit read failed: ' . $exception->getMessage());
     http_response_code(500);
-    echo json_encode(['error' => 'Audit indisponible.']);
+    echo json_encode(['error' => $exception->getMessage()]);
 }
