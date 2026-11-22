@@ -47,7 +47,7 @@ function accounting_allocate_remaining_payments(array $remainingByLine, array $p
     return $result;
 }
 
-function accounting_collect_order_balance(PDO $pdo, array $data, ?int $userId = null): array {
+function accounting_collect_order_balance(PDO $pdo, array $data, ?int $userId = null, bool $queueMeta = true): array {
     ensure_accounting_schema();
     $idempotencyKey = accounting_uuid($data['idempotency_key'] ?? null);
     $orderRef = accounting_non_empty_text($data['order_ref'] ?? null, 'La référence de commande', 32);
@@ -117,7 +117,7 @@ function accounting_collect_order_balance(PDO $pdo, array $data, ?int $userId = 
         foreach ($lines as $line) $total += (int) $line['quantity'] * (int) $line['unit_price_fcfa'];
         return ['group' => $groupResult['group'], 'order_ref' => $orderRef, 'paid_fcfa' => $paid, 'remaining_fcfa' => $remainder - $paid, 'total_fcfa' => $total, 'replayed' => false];
     });
-    if (!$result['replayed'] && (int) ($result['remaining_fcfa'] ?? 1) === 0) {
+    if ($queueMeta && !$result['replayed'] && (int) ($result['remaining_fcfa'] ?? 1) === 0) {
         try { meta_capi_queue_order_event($pdo, (string) $result['order_ref'], 'purchase', (int) ($result['total_fcfa'] ?? 0)); } catch (Throwable $metaException) { error_log('L’Horloger: signal Meta Purchase différé.'); }
     }
     return $result;

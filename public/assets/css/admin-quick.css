@@ -1,0 +1,86 @@
+/* Fast accounting and containment: scoped admin components, unchanged storefront. */
+.admin-body .admin-main,.admin-body .admin-panel,.admin-body .metric,.admin-body .admin-grid>*{min-width:0;max-width:100%}
+.admin-body .admin-main{overflow-wrap:anywhere}
+.admin-body input,.admin-body select,.admin-body textarea{box-sizing:border-box;min-width:0;max-width:100%}
+.admin-body .accounting-form .wide{grid-column:1/-1}
+.admin-body .accounting-head{flex-wrap:wrap}
+.admin-body .accounting-head>div{min-width:0;flex:1 1 320px}
+.admin-body .accounting-head .admin-button{white-space:normal;text-align:center}
+.quick-filter{margin-bottom:16px}
+.quick-filter label,.quick-toolbar label,.quick-review-order label,.quick-money-form label,.simple-payment label{display:grid;gap:8px;min-width:0;color:#405673;font-size:14px;font-weight:700}
+.quick-filter input,.quick-filter select,.quick-toolbar input,.quick-toolbar select,.quick-review-order input,.quick-money-form input,.quick-money-form select,.quick-money-form textarea,.simple-payment input,.simple-payment select{width:100%;min-width:0;min-height:46px;padding:11px 12px;border:1px solid #cbd9e7;border-radius:8px;background:#fff;color:#18365f;font:inherit}
+.quick-toolbar-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.quick-explanation{color:#526880;font-size:14px;line-height:1.6}
+.quick-selection-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin:20px 0 12px;font-size:14px;color:#526880}
+.quick-select-all{display:flex;align-items:center;gap:10px;min-height:48px;cursor:pointer;font-weight:700}
+.quick-order-list{display:grid;gap:12px}
+.quick-order-card{display:grid;grid-template-columns:28px minmax(0,1fr) minmax(120px,auto);align-items:start;gap:16px;margin:0;padding:20px;border:1px solid #d3dfec;border-radius:12px;background:#fff;cursor:pointer;transition:background .15s,border-color .15s}
+.quick-order-card:hover{border-color:#0a5c9e}
+.quick-order-card.is-selected{background:#edf6ff;border-color:#0a5c9e;box-shadow:inset 3px 0 #0a5c9e}
+.quick-select-all input,.quick-order-card>input{width:24px;height:24px;min-height:24px;accent-color:#0a5c9e;margin:2px 0;cursor:pointer}
+.quick-order-main,.quick-order-side{display:grid;gap:7px;min-width:0;font-size:14px;line-height:1.45}
+.quick-order-main>strong{font-size:17px;color:#173761}
+.quick-order-main>span{color:#526880}
+.quick-order-products{display:grid;gap:4px}
+.quick-order-reference{font-size:13px}
+.quick-order-side{justify-items:end;text-align:right}
+.quick-order-side>strong{font-size:19px;color:#173761}
+.quick-order-side small{font-size:13px;color:#526880}
+.quick-bottom-bar{position:sticky;bottom:12px;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:18px;margin:18px 0 10px;padding:16px;border:1px solid #c4d7e9;border-radius:12px;background:#fff;box-shadow:0 4px 24px #1737611a}
+.quick-bottom-bar>div{display:grid;gap:5px;min-width:0;color:#173761;font-size:15px}
+.quick-bottom-bar span{color:#526880}
+.admin-body .quick-bottom-bar button,.admin-body .quick-links button,.admin-body .quick-links .admin-button{font-size:14px;min-height:48px;white-space:normal;text-align:center}
+.quick-review-total{display:grid;gap:8px;margin:20px 0;padding:22px;border-radius:10px;background:#173761;color:#fff;font-size:15px}
+.quick-review-total strong{font-size:32px}
+.quick-review-list{display:grid;gap:12px}
+.quick-review-order{display:grid;grid-template-columns:minmax(0,1fr) minmax(240px,.7fr);gap:20px;padding:18px;border:1px solid #d3dfec;border-radius:10px;background:#f8fbff}
+.quick-review-order>div{display:grid;align-content:start;gap:8px;min-width:0;font-size:14px}
+.quick-review-order strong{color:#173761;font-size:17px}
+.quick-review-order ul{padding-left:18px;margin:3px 0;line-height:1.6}
+.quick-links{display:flex;flex-wrap:wrap;align-items:center;gap:18px;margin-top:20px}
+.quick-success details{margin-top:22px}
+.quick-success summary{cursor:pointer;padding:12px 0;font-weight:700}
+.quick-success li{margin-bottom:10px;overflow-wrap:anywhere}
+.quick-pagination a,.orders-pagination a{min-width:44px;min-height:44px}
+.admin-body [hidden]{display:none!important}
+.quick-money-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:end}
+.quick-money-form .wide,.quick-money-form details,.quick-money-form>button{grid-column:1/-1}
+.quick-money-form details,.accounting-options{min-width:0;border:1px solid #d3dfec;border-radius:10px;padding:14px;background:#f8fbff}
+.quick-money-form summary,.accounting-options summary{min-height:30px;cursor:pointer;font-size:14px;font-weight:700;color:#173761}
+.quick-money-form details>div,.accounting-options>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:16px;min-width:0}
+.quick-money-form textarea{resize:vertical}
+.quick-money-form>button{justify-self:start}
+.simple-payment{display:grid;gap:16px;padding:18px;border:1px solid #d3dfec;border-radius:10px;background:#f8fbff}
+.simple-payment-main{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.orders-filter{flex-wrap:wrap}
+.orders-filter label{display:grid;gap:6px;min-width:0;flex:1 1 150px;font-size:14px;color:#526880}
+.orders-filter input,.orders-filter select{width:100%;min-height:44px}
+.orders-list-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px;color:#526880;font-size:14px}
+.orders-page-links{display:flex;flex-wrap:wrap;gap:14px}
+.admin-body .metric strong,.admin-body .ted-grid strong{overflow-wrap:anywhere}
+.admin-body .ted-grid article{min-width:0}
+@media(max-width:1050px){.admin-body .admin-grid{grid-template-columns:minmax(0,1fr)}.admin-body .inline-form{flex-wrap:wrap}.admin-body .inline-form>*{min-width:0;max-width:100%}}
+@media(max-width:850px){.admin-body .accounting-head>div{flex:initial;width:100%}}
+@media(max-width:700px){
+ .quick-toolbar-fields,.quick-money-form,.quick-money-form details>div,.accounting-options>div,.simple-payment-main{grid-template-columns:minmax(0,1fr)}
+ .quick-order-card{grid-template-columns:26px minmax(0,1fr);padding:16px;gap:12px}
+ .quick-order-side{grid-column:2;justify-items:start;text-align:left;grid-template-columns:minmax(0,1fr) auto;align-items:center}
+ .quick-order-side small{grid-column:1/-1}
+ .quick-bottom-bar{bottom:8px;flex-wrap:wrap;gap:12px;padding:14px}
+ .quick-bottom-bar>div{width:100%}
+ .quick-bottom-bar button{width:100%}
+ .quick-review-order{grid-template-columns:minmax(0,1fr);padding:15px}
+ .quick-links{align-items:stretch;flex-direction:column}
+ .quick-links .admin-button{width:100%}
+ .quick-money-form>button{width:100%;justify-self:stretch}
+ .admin-body .accounting-tabs a,.admin-body .accounting-action-tabs a{display:flex;align-items:center;min-height:44px;font-size:14px}
+ .admin-body .accounting-form label,.admin-body .delivery-form label{font-size:14px}
+ .admin-body .quick-money-form input,.admin-body .quick-money-form select,.admin-body .quick-money-form textarea,.admin-body .quick-filter input,.admin-body .quick-filter select,.admin-body .quick-toolbar input,.admin-body .quick-toolbar select,.admin-body .quick-review-order input{font-size:16px}
+ .admin-body .data-form label,.admin-body .inline-form label{font-size:14px}
+ .admin-body .data-form input,.admin-body .data-form select,.admin-body .inline-form input,.admin-body .inline-form select,.admin-body .admin-filter input,.admin-body .admin-filter select{font-size:16px;min-height:46px}
+ .admin-body .admin-button{min-height:46px;font-size:14px}
+ .admin-body .accounting-form input,.admin-body .accounting-form select,.admin-body .accounting-form textarea,.admin-body .delivery-form input,.admin-body .delivery-form select,.admin-body .delivery-form textarea{font-size:16px;min-height:46px}
+ .admin-body .admin-filter{max-width:100%}
+ .admin-body .admin-filter>*{min-width:0;max-width:100%}
+ .admin-body .operation-hero>b{white-space:normal;overflow-wrap:anywhere}
+}

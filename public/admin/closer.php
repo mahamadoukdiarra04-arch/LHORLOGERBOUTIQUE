@@ -2,6 +2,7 @@
 require __DIR__ . '/../../app/bootstrap.php';
 require_manager();
 ensure_closer_schema();
+ensure_accounting_schema();
 $pdo = db();
 sync_all_closer_tracking($pdo);
 
@@ -62,7 +63,7 @@ if (!array_key_exists($historyPeriod, $historyPeriods)) $historyPeriod = '30';
 $historyCloser = trim((string) ($_GET['closer'] ?? ''));
 if ($historyCloser !== '' && !in_array($historyCloser, $closerIdentities, true)) $historyCloser = '';
 
-$historyWhere = [];
+$historyWhere = ['NOT EXISTS (SELECT 1 FROM order_archives ar WHERE BINARY ar.order_ref = BINARY o.order_ref AND ar.restored_at IS NULL)'];
 $historyParams = [];
 if ($historyPeriod !== 'all') {
     $historyWhere[] = 't.updated_at >= DATE_SUB(NOW(), INTERVAL ' . (int) $historyPeriod . ' DAY)';

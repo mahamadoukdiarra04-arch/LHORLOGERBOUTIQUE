@@ -136,7 +136,7 @@ function accounting_add_delivery_cogs_allocations(PDO $pdo, int $operationId, ar
     }
 }
 
-function accounting_confirm_delivery(PDO $pdo, int $orderId, array $data, ?int $userId = null): array {
+function accounting_confirm_delivery(PDO $pdo, int $orderId, array $data, ?int $userId = null, bool $queueMeta = true): array {
     ensure_accounting_schema();
     ensure_closer_schema();
     $idempotencyKey = accounting_uuid($data['idempotency_key'] ?? null);
@@ -252,6 +252,7 @@ function accounting_confirm_delivery(PDO $pdo, int $orderId, array $data, ?int $
                 'sale_unit_price_fcfa' => $line['unit_price_fcfa'],
                 'note' => 'Livraison ' . $orderRef,
                 'actor' => admin_identity(),
+                'effective_at' => $effectiveAt,
             ]);
         }
         $update = $pdo->prepare('UPDATE orders SET status = "Livrée", stock_processed = 1, delivered_at = ? WHERE order_ref = ?');
@@ -272,7 +273,7 @@ function accounting_confirm_delivery(PDO $pdo, int $orderId, array $data, ?int $
     });
     // A Purchase is only emitted after the order is genuinely delivered and
     // fully collected. Partial deliveries wait for balance collection.
-    if (!$result['replayed'] && (int) $result['paid_fcfa'] === (int) $result['total_fcfa']) {
+    if ($queueMeta && !$result['replayed'] && (int) $result['paid_fcfa'] === (int) $result['total_fcfa']) {
         try { meta_capi_queue_order_event($pdo, (string) $result['order_ref'], 'purchase', (int) $result['paid_fcfa']); } catch (Throwable $metaException) { error_log('L’Horloger: signal Meta Purchase différé.'); }
     }
     return $result;

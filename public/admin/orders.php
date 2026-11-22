@@ -15,10 +15,37 @@ function orders_statuses_without_delivery(): array {
     return ['À confirmer', 'Confirmée', 'En livraison', 'Annulée'];
 }
 
+$listInput = $_SERVER['REQUEST_METHOD'] === 'POST' && is_array($_POST['filters'] ?? null) ? $_POST['filters'] : $_GET;
+$statusFilter = (string) ($listInput['status'] ?? '');
+if (!in_array($statusFilter, ['À confirmer', 'Confirmée', 'En livraison', 'Livrée', 'Annulée'], true)) $statusFilter = '';
+$search = mb_substr(trim((string) ($listInput['q'] ?? '')), 0, 160);
+$perPage = (int) ($listInput['per_page'] ?? 25);
+if (!in_array($perPage, [10, 25, 50], true)) $perPage = 25;
+$page = max(1, (int) ($listInput['page'] ?? 1));
+$archivedView = ($listInput['view'] ?? '') === 'archived';
+function orders_filter_date(mixed $value): string {
+    $date = is_string($value) ? $value : '';
+    if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $date, $parts)) return '';
+    return checkdate((int) $parts[2], (int) $parts[3], (int) $parts[1]) ? $date : '';
+}
+$dateStart = orders_filter_date($listInput['start'] ?? '');
+$dateEnd = orders_filter_date($listInput['end'] ?? '');
+$listQuery = ['q' => $search, 'status' => $statusFilter, 'start' => $dateStart, 'end' => $dateEnd, 'per_page' => $perPage, 'page' => $page, 'view' => $archivedView ? 'archived' : ''];
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $orderId = (int) ($_POST['order_id'] ?? 0);
     $formAction = (string) ($_POST['form_action'] ?? 'update_status');
+
+    if (in_array($formAction, ['archive_order', 'restore_order'], true)) {
+        try {
+            $ref = accounting_archive_order($pdo, $orderId, $formAction === 'restore_order', accounting_current_user_id());
+            flash('success', $ref . ($formAction === 'restore_order' ? ' est de nouveau visible.' : ' a été masquée. Elle reste accessible dans « Commandes masquées ».'));
+        } catch (Throwable $exception) {
+            flash('error', accounting_safe_error_message($exception, 'Cette commande ne peut pas être masquée pour le moment.'));
+        }
+        redirect('/admin/orders.php');
+    }
 
     if ($formAction === 'edit_order') {
         try {
@@ -28,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             error_log('L’Horloger: modification avant encaissement échouée.');
             flash('error', accounting_safe_error_message($exception, 'La commande n’a pas pu être modifiée. Réessayez dans quelques instants.'));
         }
-        redirect('/admin/orders.php?order=' . $orderId . '#order-detail-' . $orderId);
+        redirect('/admin/orders.php?' . http_build_query($listQuery + ['order' => $orderId]) . '#order-detail-' . $orderId);
     }
 
     $status = (string) ($_POST['status'] ?? '');
@@ -47,6 +74,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $selected->execute([$orderId]);
             $order = $selected->fetch();
             if (!$order) throw new RuntimeException('Commande introuvable.');
+            $archive = $pdo->prepare('SELECT order_ref FROM order_archives WHERE order_ref = ? AND restored_at IS NULL');
+            $archive->execute([$order['order_ref']]);
+            if ($archive->fetchColumn()) throw new RuntimeException('Restaurez cette commande avant de modifier son statut.');
 
             $allLines = $pdo->prepare('SELECT id, status, stock_processed FROM orders WHERE order_ref = ? FOR UPDATE');
             $allLines->execute([$order['order_ref']]);
@@ -74,18 +104,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $messages = [
                 'Commande introuvable.',
                 'Une référence déjà livrée ne peut plus être modifiée depuis cette liste.',
+                'Restaurez cette commande avant de modifier son statut.',
             ];
             flash('error', in_array($exception->getMessage(), $messages, true) ? $exception->getMessage() : 'La mise à jour a échoué. Réessayez dans quelques instants.');
             error_log('L’Horloger: mise à jour de commande échouée.');
         }
     }
-    redirect('/admin/orders.php?order=' . $orderId . '#order-detail-' . $orderId);
+    redirect('/admin/orders.php?' . http_build_query($listQuery + ['order' => $orderId]) . '#order-detail-' . $orderId);
 }
 
-$statusFilter = (string) ($_GET['status'] ?? '');
-$search = trim((string) ($_GET['q'] ?? ''));
 $selected = (int) ($_GET['order'] ?? 0);
-$where = [];
+$where = [($archivedView ? '' : 'NOT ') . 'EXISTS (SELECT 1 FROM order_archives archive WHERE BINARY archive.order_ref = BINARY o.order_ref AND archive.restored_at IS NULL)'];
 $params = [];
 if (in_array($statusFilter, ['À confirmer', 'Confirmée', 'En livraison', 'Livrée', 'Annulée'], true)) {
     $where[] = 'o.status = ?';
@@ -95,7 +124,26 @@ if ($search !== '') {
     $where[] = 'CONCAT(o.order_ref," ",o.customer_first_name," ",o.customer_last_name," ",o.phone," ",o.district," ",o.product_name," ",o.variant) LIKE ?';
     $params[] = '%' . $search . '%';
 }
-$sql = 'SELECT o.* FROM orders o' . ($where ? ' WHERE ' . implode(' AND ', $where) : '') . ' ORDER BY o.created_at DESC LIMIT 150';
+if ($dateStart !== '') { $where[] = 'o.created_at >= ?'; $params[] = $dateStart . ' 00:00:00'; }
+if ($dateEnd !== '') { $where[] = 'o.created_at <= ?'; $params[] = $dateEnd . ' 23:59:59'; }
+$whereSql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
+$count = $pdo->prepare('SELECT COUNT(*) FROM orders o' . $whereSql);
+$count->execute($params);
+$totalOrders = (int) $count->fetchColumn();
+$totalPages = max(1, (int) ceil($totalOrders / $perPage));
+// Links from the dashboard must find an old order beyond the first page, too.
+if ($selected > 0 && !isset($_GET['page'])) {
+    $target = $pdo->prepare('SELECT id, created_at FROM orders WHERE id = ?');
+    $target->execute([$selected]);
+    if ($targetOrder = $target->fetch()) {
+        $rank = $pdo->prepare('SELECT COUNT(*) FROM orders o' . $whereSql . ($where ? ' AND ' : ' WHERE ') . '(o.created_at > ? OR (o.created_at = ? AND o.id > ?))');
+        $rank->execute(array_merge($params, [$targetOrder['created_at'], $targetOrder['created_at'], $selected]));
+        $page = intdiv((int) $rank->fetchColumn(), $perPage) + 1;
+    }
+}
+$page = min($page, $totalPages);
+$listQuery['page'] = $page;
+$sql = 'SELECT o.* FROM orders o' . $whereSql . ' ORDER BY o.created_at DESC, o.id DESC LIMIT ' . $perPage . ' OFFSET ' . (($page - 1) * $perPage);
 $statement = $pdo->prepare($sql);
 $statement->execute($params);
 $orders = $statement->fetchAll();
@@ -135,16 +183,21 @@ require APP_ROOT . '/templates/admin-header.php';
   <div>
     <p class="admin-kicker">Commandes</p>
     <h1>Chaque détail à portée de main.</h1>
-    <p>Le canal est requis dès que la commande est confirmée. La livraison et l’encaissement se font ensemble, pour toute la référence.</p>
+    <p>Consultez l’historique par page ou utilisez la saisie rapide pour traiter plusieurs commandes à la fois.</p>
   </div>
   <div class="metric"><p>À confirmer</p><strong><?= (int) $pdo->query("SELECT COUNT(*) FROM orders WHERE status='À confirmer'")->fetchColumn() ?></strong></div>
 </header>
 
-<form class="admin-filter" method="get">
-  <input name="q" value="<?= e($search) ?>" placeholder="Client, référence ou quartier">
-  <select name="status"><option value="">Tous les états</option><?php foreach (['À confirmer', 'Confirmée', 'En livraison', 'Livrée', 'Annulée'] as $option): ?><option <?= $statusFilter === $option ? 'selected' : '' ?>><?= e($option) ?></option><?php endforeach; ?></select>
+<div class="orders-page-links"><a class="admin-button" href="<?= e(url('/admin/accounting-quick.php')) ?>">Saisie rapide des commandes</a><a class="text-link" href="?view=<?= $archivedView ? '' : 'archived' ?>"><?= $archivedView ? 'Revenir aux commandes visibles' : 'Commandes masquées' ?></a></div>
+<form class="admin-filter orders-filter" method="get">
+  <?php if ($archivedView): ?><input type="hidden" name="view" value="archived"><?php endif; ?>
+  <label>Rechercher<input name="q" value="<?= e($search) ?>" placeholder="Client, référence ou quartier"></label>
+  <label>Statut<select name="status"><option value="">Tous les états</option><?php foreach (['À confirmer', 'Confirmée', 'En livraison', 'Livrée', 'Annulée'] as $option): ?><option <?= $statusFilter === $option ? 'selected' : '' ?>><?= e($option) ?></option><?php endforeach; ?></select></label>
+  <label>Commandées du<input type="date" name="start" value="<?= e($dateStart) ?>"></label><label>Au<input type="date" name="end" value="<?= e($dateEnd) ?>"></label>
+  <label>Par page<select name="per_page"><?php foreach ([10, 25, 50] as $size): ?><option value="<?= $size ?>" <?= $perPage === $size ? 'selected' : '' ?>><?= $size ?></option><?php endforeach; ?></select></label>
   <button class="admin-button">Filtrer</button>
 </form>
+<div class="orders-list-head"><span><?= $totalOrders ?> ligne(s) de commande · <?= $totalOrders ? (($page - 1) * $perPage + 1) : 0 ?> à <?= min($totalOrders, $page * $perPage) ?></span><span>Page <?= $page ?> / <?= $totalPages ?></span></div>
 
 <section class="admin-panel"><div class="admin-table-wrap mobile-card-table-wrap"><table class="admin-table mobile-card-table orders-table"><thead><tr><th>Commande</th><th>Client</th><th>Produit</th><th>Canal</th><th>État</th><th>Montant</th><th></th></tr></thead><tbody>
 <?php foreach ($orders as $order): ?>
@@ -158,9 +211,9 @@ require APP_ROOT . '/templates/admin-header.php';
     <td data-label="Montant"><strong><?= money($order['unit_price_fcfa'] * $order['quantity']) ?></strong></td>
     <td class="order-actions">
       <?php if ($isExpanded): ?>
-        <a class="text-link" href="?<?= e(http_build_query(['q' => $search, 'status' => $statusFilter])) ?>#order-card-<?= (int) $order['id'] ?>" aria-expanded="true" aria-controls="order-detail-<?= (int) $order['id'] ?>">Fermer les détails <span class="order-action-arrow" aria-hidden="true">↑</span></a>
+        <a class="text-link" href="?<?= e(http_build_query($listQuery)) ?>#order-card-<?= (int) $order['id'] ?>" aria-expanded="true" aria-controls="order-detail-<?= (int) $order['id'] ?>">Fermer les détails <span class="order-action-arrow" aria-hidden="true">↑</span></a>
       <?php else: ?>
-        <a class="text-link" href="?<?= e(http_build_query(['q' => $search, 'status' => $statusFilter, 'order' => $order['id']])) ?>#order-card-<?= (int) $order['id'] ?>" aria-expanded="false" aria-controls="order-detail-<?= (int) $order['id'] ?>">Voir les détails <span class="order-action-arrow" aria-hidden="true">↓</span></a>
+        <a class="text-link" href="?<?= e(http_build_query($listQuery + ['order' => $order['id']])) ?>#order-card-<?= (int) $order['id'] ?>" aria-expanded="false" aria-controls="order-detail-<?= (int) $order['id'] ?>">Voir les détails <span class="order-action-arrow" aria-hidden="true">↓</span></a>
       <?php endif; ?>
     </td>
   </tr>
@@ -193,6 +246,7 @@ require APP_ROOT . '/templates/admin-header.php';
           </div>
           <form class="order-edit-form" method="post" data-order-edit-form>
             <?= csrf_field() ?>
+            <?php foreach ($listQuery as $field => $value): ?><input type="hidden" name="filters[<?= e($field) ?>]" value="<?= e((string) $value) ?>"><?php endforeach; ?>
             <input type="hidden" name="form_action" value="edit_order">
             <input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>">
             <fieldset>
@@ -222,6 +276,7 @@ require APP_ROOT . '/templates/admin-header.php';
         <section class="order-edit-panel is-locked"><p class="admin-kicker">Modification verrouillée</p><h3>Cette commande ne peut plus être modifiée.</h3><p><?= e((string) $selectedEditability['reason']) ?></p></section>
       <?php endif; ?>
       <h3 class="order-detail-group-title order-detail-actions-title">Suivi et actions</h3>
+      <?php if ($archivedView || $order['status'] === 'Annulée'): ?><form method="post" class="quick-links"><?= csrf_field() ?><input type="hidden" name="form_action" value="<?= $archivedView ? 'restore_order' : 'archive_order' ?>"><input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>"><button type="submit" class="admin-button"><?= $archivedView ? 'Restaurer cette commande' : 'Masquer cette commande indésirable' ?></button><p class="quick-explanation">Réversible. Les commandes avec écritures comptables ou mouvements de stock sont protégées.</p></form><?php endif; ?>
       <?php if ($order['status'] === 'Livrée'): ?>
         <p class="admin-copy">Cette référence a été livrée. Son historique financier est protégé contre toute modification directe.</p>
         <?php if (isset($selectedFinanceError)): ?>
@@ -233,6 +288,7 @@ require APP_ROOT . '/templates/admin-header.php';
         <?php endif; ?>
       <?php else: ?>
         <form class="inline-form" method="post">
+          <?php foreach ($listQuery as $field => $value): ?><input type="hidden" name="filters[<?= e($field) ?>]" value="<?= e((string) $value) ?>"><?php endforeach; ?>
           <?= csrf_field() ?><input type="hidden" name="form_action" value="update_status"><input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>">
           <label>Statut<select name="status"><?php foreach (orders_statuses_without_delivery() as $option): ?><option <?= $order['status'] === $option ? 'selected' : '' ?>><?= e($option) ?></option><?php endforeach; ?></select></label>
           <label>Canal d’acquisition<select name="channel"><option value="">À renseigner</option><?php foreach (['Meta', 'Réachat'] as $channel): ?><option <?= $order['acquisition_channel'] === $channel ? 'selected' : '' ?>><?= $channel ?></option><?php endforeach; ?></select></label>
@@ -240,12 +296,16 @@ require APP_ROOT . '/templates/admin-header.php';
           <?php if ($order['status'] !== 'Annulée'): ?><a class="admin-button" href="<?= e(url('/admin/accounting-delivery.php?order=' . (int) $order['id'])) ?>">Encaisser & livrer</a><?php endif; ?>
         </form>
       <?php endif; ?>
-      <a class="order-detail-close" href="?<?= e(http_build_query(['q' => $search, 'status' => $statusFilter])) ?>#order-card-<?= (int) $order['id'] ?>">Fermer les détails <span class="order-action-arrow" aria-hidden="true">↑</span></a>
+      <a class="order-detail-close" href="?<?= e(http_build_query($listQuery)) ?>#order-card-<?= (int) $order['id'] ?>">Fermer les détails <span class="order-action-arrow" aria-hidden="true">↑</span></a>
     </section></td></tr>
   <?php endif; ?>
 <?php endforeach; ?>
 <?php if (!$orders): ?><tr class="mobile-card-empty"><td colspan="7">Aucune commande ne correspond à ce filtre.</td></tr><?php endif; ?>
 </tbody></table></div></section>
+<?php if ($totalPages > 1): ?><nav class="accounting-pagination orders-pagination" aria-label="Pages de l’historique des commandes">
+<?php if ($page > 1): ?><a href="?<?= e(http_build_query(array_replace($listQuery, ['page' => $page - 1]))) ?>">Précédent</a><?php endif; ?>
+<?php foreach (array_unique([1, max(1, $page - 1), $page, min($totalPages, $page + 1), $totalPages]) as $number): ?><a class="<?= $number === $page ? 'active' : '' ?>" <?= $number === $page ? 'aria-current="page"' : '' ?> href="?<?= e(http_build_query(array_replace($listQuery, ['page' => $number]))) ?>"><?= $number ?></a><?php endforeach; ?>
+<?php if ($page < $totalPages): ?><a href="?<?= e(http_build_query(array_replace($listQuery, ['page' => $page + 1]))) ?>">Suivant</a><?php endif; ?></nav><?php endif; ?>
 <script id="order-edit-catalog" type="application/json"><?= json_encode(array_values($orderEditCatalog), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
 <?php $ordersScriptVersion = (string) (@filemtime(dirname(APP_ROOT) . '/public/assets/js/admin-orders.js') ?: '1'); ?>
 <script src="<?= e(url('/assets/js/admin-orders.js?v=' . $ordersScriptVersion)) ?>" defer></script>

@@ -24,15 +24,16 @@ require APP_ROOT . '/templates/admin-header.php';
   <div>
     <p class="admin-kicker">Comptabilité · Réel</p>
     <h1>La trésorerie, sans approximation.</h1>
-    <p>Un Journal pour chaque mouvement, un TED pour comprendre le résultat, et des actions qui restent traçables.</p>
+    <p>Enregistrez vos ventes et dépenses, puis consultez simplement l’argent disponible et ce que gagne la boutique.</p>
   </div>
-  <a class="admin-button" href="<?= e(url('/admin/accounting-action.php')) ?>">+ Enregistrer une action</a>
+  <a class="admin-button" href="<?= e(url('/admin/accounting-quick.php')) ?>">Saisie rapide des commandes</a>
 </header>
 
 <nav class="accounting-tabs" aria-label="Navigation comptabilité">
   <a class="active" href="<?= e(url('/admin/accounting.php')) ?>">Vue d’ensemble</a>
+  <a href="<?= e(url('/admin/accounting-quick.php')) ?>">Saisie rapide</a>
   <a href="<?= e(url('/admin/accounting-journal.php')) ?>">Journal</a>
-  <a href="<?= e(url('/admin/accounting-ted.php')) ?>">TED & rentabilité</a>
+  <a href="<?= e(url('/admin/accounting-ted.php')) ?>">Rentabilité</a>
   <a href="<?= e(url('/admin/accounting-settings.php')) ?>">Comptes & réglages</a>
 </nav>
 
@@ -54,16 +55,16 @@ require APP_ROOT . '/templates/admin-header.php';
   </section>
 
   <section class="metric-grid accounting-metrics">
-    <article class="metric"><p>Trésorerie actuelle</p><strong><?= money($treasury) ?></strong><span><?= count($accounts) ?> compte(s) actif(s)</span></article>
+    <article class="metric"><p>Argent disponible</p><strong><?= money($treasury) ?></strong><span><?= count($accounts) ?> compte(s) actif(s) · différent du bénéfice</span></article>
     <article class="metric"><p>CA net · <?= e($periodLabel) ?></p><strong><?= money($ted['net_product_revenue_fcfa'] + $ted['net_shop_revenue_fcfa']) ?></strong><span>Ventes moins remboursements</span></article>
-    <article class="metric"><p>Résultat boutique</p><strong><?= money($ted['shop_result_fcfa']) ?></strong><span><?= $ted['is_complete'] ? 'Période entièrement ventilée' : $ted['unallocated_operation_count'] . ' écriture(s) à vérifier' ?></span></article>
-    <article class="metric"><p>Reliquats à suivre</p><strong><?= $openExceptions ?></strong><span>Commande(s) livrée(s) avec solde</span></article>
+    <article class="metric"><p>Gain ou perte de la boutique</p><strong><?= money($ted['shop_result_fcfa']) ?></strong><span><?= $ted['is_complete'] ? 'Après coût des montres et toutes les dépenses' : $ted['unallocated_operation_count'] . ' écriture(s) à classer avant lecture définitive' ?></span></article>
+    <article class="metric"><p>Soldes clients à encaisser</p><strong><?= $openExceptions ?></strong><span>Commande(s) livrée(s) non entièrement payée(s)</span></article>
   </section>
 
   <section class="accounting-action-grid">
     <a class="accounting-action-card" href="<?= e(url('/admin/accounting-action.php?action=direct_sale')) ?>"><span>Vente</span><strong>Vente directe</strong><small>Encaisser une vente hors site et traiter le stock.</small></a>
-    <a class="accounting-action-card" href="<?= e(url('/admin/accounting-action.php?action=collect_balance')) ?>"><span>Commande</span><strong>Régulariser un reliquat</strong><small>Encaisser une commande déjà livrée.</small></a>
-    <a class="accounting-action-card" href="<?= e(url('/admin/accounting-action.php?action=disbursement')) ?>"><span>Dépense</span><strong>Décaisser</strong><small>Enregistrer une charge Produit ou Boutique.</small></a>
+    <a class="accounting-action-card" href="<?= e(url('/admin/accounting-quick.php')) ?>"><span>Commandes</span><strong>Saisie rapide</strong><small>Sélectionner plusieurs commandes, livrer et encaisser ensemble.</small></a>
+    <a class="accounting-action-card" href="<?= e(url('/admin/accounting-action.php?action=disbursement')) ?>"><span>Dépense</span><strong>Enregistrer une dépense</strong><small>Pub, livraison, achat ou autre dépense.</small></a>
     <a class="accounting-action-card" href="<?= e(url('/admin/accounting-action.php?action=transfer')) ?>"><span>Trésorerie</span><strong>Transférer</strong><small>Déplacer des fonds, avec frais si nécessaire.</small></a>
   </section>
 
@@ -75,7 +76,7 @@ require APP_ROOT . '/templates/admin-header.php';
       </div>
     </article>
     <article class="admin-panel">
-      <div class="admin-panel__head"><div><p class="admin-kicker">Période · <?= e($periodLabel) ?></p><h2>Lecture rapide du TED.</h2></div><a href="<?= e(url('/admin/accounting-ted.php?period=' . rawurlencode((string) ($_GET['period'] ?? '30')))) ?>">Voir le TED →</a></div>
+      <div class="admin-panel__head"><div><p class="admin-kicker">Période · <?= e($periodLabel) ?></p><h2>Ventes et dépenses de la période.</h2></div><a href="<?= e(url('/admin/accounting-ted.php?period=' . rawurlencode((string) ($_GET['period'] ?? '30')))) ?>">Voir la rentabilité</a></div>
       <div class="accounting-summary-list"><div><span>CA net montres</span><strong><?= money($ted['net_product_revenue_fcfa']) ?></strong></div><div><span>Coût des montres vendues</span><strong><?= money($ted['cogs_fcfa']) ?></strong></div><div><span>Charges directes</span><strong><?= money($ted['direct_expense_fcfa']) ?></strong></div><div><span>Charges boutique</span><strong><?= money($ted['common_expense_fcfa']) ?></strong></div></div>
     </article>
   </section>
@@ -85,4 +86,5 @@ require APP_ROOT . '/templates/admin-header.php';
     <?php if ($recent['rows'] === []): ?><p class="admin-copy">Aucun mouvement confirmé pour le moment.</p><?php else: ?><div class="accounting-account-list"><?php foreach (array_slice($recent['rows'], 0, 5) as $operation): ?><a class="accounting-account" href="<?= e(url('/admin/accounting-operation.php?operation=' . (int) $operation['id'])) ?>"><span><strong><?= e($operation['label']) ?></strong><small><?= e(date('d/m/Y H:i', strtotime($operation['effective_at']))) ?> · <?= e($operation['group_reference']) ?></small></span><strong class="<?= $operation['nature'] === 'disbursement' ? 'amount-negative' : '' ?>"><?= $operation['nature'] === 'disbursement' ? '−' : ($operation['nature'] === 'receipt' ? '+' : '↔') ?><?= money($operation['amount_fcfa']) ?></strong></a><?php endforeach; ?></div><?php endif; ?>
   </section>
 <?php endif; ?>
+<?php if (!isset($accountingError) && $isInitialized): require APP_ROOT . '/templates/accounting-help.php'; endif; ?>
 <?php require APP_ROOT . '/templates/admin-footer.php'; ?>

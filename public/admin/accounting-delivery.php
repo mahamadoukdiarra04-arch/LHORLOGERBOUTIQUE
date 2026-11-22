@@ -70,20 +70,22 @@ require APP_ROOT . '/templates/admin-header.php';
         <input type="hidden" name="order_id" value="<?= (int) $orderId ?>">
         <input type="hidden" name="idempotency_key" value="<?= e(accounting_new_uuid()) ?>">
         <label class="delivery-date">Date de livraison<input type="datetime-local" name="effective_at" value="<?= e((new DateTimeImmutable('now', accounting_bamako_timezone()))->format('Y-m-d\TH:i')) ?>" required></label>
-        <div class="delivery-payments">
-          <?php for ($index = 0; $index < 3; $index++): ?>
-            <fieldset><legend>Encaissement <?= $index + 1 ?><?= $index === 0 ? ' · requis' : ' · facultatif' ?></legend>
-              <label>Compte<select name="payments[<?= $index ?>][account_id]" <?= $index === 0 ? 'required' : '' ?>><option value="">Choisir</option><?php foreach ($delivery['accounts'] as $account): ?><option value="<?= (int) $account['id'] ?>"><?= e($account['name']) ?> · <?= e($account['code']) ?></option><?php endforeach; ?></select></label>
-              <label>Montant FCFA<input type="number" name="payments[<?= $index ?>][amount_fcfa]" min="1" inputmode="numeric" <?= $index === 0 ? 'required' : '' ?>></label>
-              <label>Référence <small>facultatif</small><input name="payments[<?= $index ?>][payment_reference]" maxlength="120" placeholder="Ex. reçu ou transfert"></label>
-            </fieldset>
+        <div class="simple-payment"><div class="simple-payment-main">
+          <label>Compte de réception<select name="payments[0][account_id]" required><option value="">Choisir</option><?php foreach ($delivery['accounts'] as $account): ?><option value="<?= (int) $account['id'] ?>" <?= count($delivery['accounts']) === 1 ? 'selected' : '' ?>><?= e($account['name']) ?></option><?php endforeach; ?></select></label>
+          <label>Montant reçu FCFA<input type="number" name="payments[0][amount_fcfa]" value="<?= (int) $delivery['total_fcfa'] ?>" min="1" inputmode="numeric" required></label>
+        </div></div>
+        <details class="accounting-options"><summary>Paiement partiel, autre compte ou référence</summary><div>
+          <label>Référence de paiement (facultative)<input name="payments[0][payment_reference]" maxlength="120"></label>
+          <?php for ($index = 1; $index < 3; $index++): ?>
+          <fieldset class="simple-payment"><legend>Autre encaissement <?= $index ?></legend><label>Compte<select name="payments[<?= $index ?>][account_id]"><option value="">Aucun</option><?php foreach ($delivery['accounts'] as $account): ?><option value="<?= (int) $account['id'] ?>"><?= e($account['name']) ?></option><?php endforeach; ?></select></label><label>Montant FCFA<input type="number" name="payments[<?= $index ?>][amount_fcfa]" min="1" inputmode="numeric"></label><label>Référence (facultative)<input name="payments[<?= $index ?>][payment_reference]" maxlength="120"></label></fieldset>
           <?php endfor; ?>
-        </div>
-        <label class="delivery-exception"><input type="checkbox" name="exception_mode" value="1"><span>Livrer avec un reliquat de paiement</span></label>
-        <label>Motif du reliquat <small>obligatoire seulement si le total encaissé est incomplet</small><textarea name="exception_reason" maxlength="500" rows="3" placeholder="Ex. solde à récupérer mardi"></textarea></label>
+          <label class="delivery-exception"><input type="checkbox" name="exception_mode" value="1"><span>Livrer avec un solde restant à encaisser</span></label>
+          <label>Motif du paiement incomplet<textarea name="exception_reason" maxlength="500" rows="2" placeholder="Ex. solde à récupérer mardi"></textarea></label>
+        </div></details>
         <button class="admin-button" type="submit">Confirmer l’encaissement & la livraison</button>
       </form>
     </section>
   <?php endif; ?>
 <?php endif; ?>
+<script src="<?= e(url('/assets/js/accounting-simple.js?v=20261122')) ?>" defer></script>
 <?php require APP_ROOT . '/templates/admin-footer.php'; ?>

@@ -10,6 +10,7 @@ const ACCOUNTING_DELIVERY_EXPENSE_CATEGORY_VERSION = '20260828_delivery_expense_
 const ACCOUNTING_ORDER_EDIT_VERSION = '20260901_order_edit';
 const ACCOUNTING_DELIVERY_SHOP_SCOPE_VERSION = '20260902_delivery_shop_scope';
 const ACCOUNTING_CATALOG_VARIANTS_VERSION = '20260913_catalog_variants';
+const ACCOUNTING_QUICK_VERSION = '20261122_quick_batches_v2';
 
 /**
  * The accounting foundation is deliberately initialized from PHP as well as
@@ -96,6 +97,25 @@ function ensure_accounting_schema(): void {
             accounting_seed_product_variants($pdo);
             $mark = $pdo->prepare('INSERT INTO accounting_schema_migrations (version) VALUES (?)');
             $mark->execute([ACCOUNTING_CATALOG_VARIANTS_VERSION]);
+        }
+        $applied->execute([ACCOUNTING_QUICK_VERSION]);
+        if (!$applied->fetchColumn()) {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS accounting_quick_batches (
+                idempotency_key CHAR(36) NOT NULL PRIMARY KEY,
+                payload_hash CHAR(64) NOT NULL,
+                result_json LONGTEXT NULL,
+                created_by_user_id BIGINT UNSIGNED NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            $pdo->exec("CREATE TABLE IF NOT EXISTS order_archives (
+                order_ref VARCHAR(32) NOT NULL PRIMARY KEY,
+                reason VARCHAR(500) NOT NULL,
+                archived_by_user_id BIGINT UNSIGNED NULL,
+                archived_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                restored_at DATETIME NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            $mark = $pdo->prepare('INSERT INTO accounting_schema_migrations (version) VALUES (?)');
+            $mark->execute([ACCOUNTING_QUICK_VERSION]);
         }
         $ready = true;
     } finally {
@@ -667,3 +687,4 @@ require_once __DIR__ . '/accounting_attachments.php';
 require_once __DIR__ . '/accounting_reports.php';
 require_once __DIR__ . '/accounting_journal.php';
 require_once __DIR__ . '/accounting_orders.php';
+require_once __DIR__ . '/accounting_quick.php';

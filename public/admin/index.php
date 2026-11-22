@@ -58,7 +58,7 @@ $stock = $pdo->query(
 $low = array_values(array_filter($stock, static fn(array $item): bool => (int) $item['quantity'] <= 6));
 $recent = $pdo->query(
     'SELECT id, order_ref, customer_first_name, customer_last_name, product_name, variant, quantity, status, unit_price_fcfa, created_at
-     FROM orders ORDER BY created_at DESC LIMIT 6'
+     FROM orders o WHERE NOT EXISTS (SELECT 1 FROM order_archives ar WHERE BINARY ar.order_ref = BINARY o.order_ref AND ar.restored_at IS NULL) ORDER BY created_at DESC LIMIT 6'
 )->fetchAll();
 $periodQuery = http_build_query(['period' => $periodKey, 'start' => $start, 'end' => $end]);
 
@@ -86,11 +86,11 @@ require APP_ROOT . '/templates/admin-header.php';
 <?php else: ?>
   <section class="metric-grid">
     <article class="metric"><p>CA net réalisé</p><strong><?= money($ted['net_product_revenue_fcfa'] + $ted['net_shop_revenue_fcfa']) ?></strong><span>Ventes moins remboursements</span></article>
-    <article class="metric"><p>Marge brute réalisée</p><strong><?= money($ted['gross_margin_fcfa']) ?></strong><span>CA montres net − coût des montres vendues</span></article>
-    <article class="metric"><p>Contribution montres</p><strong><?= money($ted['product_contribution_fcfa']) ?></strong><span>Après charges directes, dont Meta comptabilisé</span></article>
+    <article class="metric"><p>Gain avant publicité</p><strong><?= money($ted['gross_margin_fcfa']) ?></strong><span>CA montres net − coût des montres vendues</span></article>
+    <article class="metric"><p>Gain après pub et frais produit</p><strong><?= money($ted['product_contribution_fcfa']) ?></strong><span>Ventes moins coût des montres, publicités et frais produit</span></article>
     <article class="metric"><p>Ventes comptabilisées</p><strong><?= $accountedSales ?></strong><span>Livraisons et ventes directes de la période</span></article>
   </section>
-  <section class="admin-panel finance-context"><div class="admin-panel__head"><div><p class="admin-kicker">Source unique</p><h2>Lecture financière réalisée.</h2></div><a href="<?= e(url('/admin/accounting-ted.php?' . $periodQuery)) ?>">Voir le TED →</a></div><p class="admin-copy">Les données de trésorerie et de rentabilité sont identiques dans le TED, l’Analyse produits et les fiches Stock pour cette période.</p><a class="text-link" href="<?= e(url('/admin/accounting-journal.php?start=' . rawurlencode($start) . '&end=' . rawurlencode($end))) ?>">Contrôler le Journal de la période →</a></section>
+  <section class="admin-panel finance-context"><div class="admin-panel__head"><div><p class="admin-kicker">Source unique</p><h2>Lecture financière réalisée.</h2></div><a href="<?= e(url('/admin/accounting-ted.php?' . $periodQuery)) ?>">Voir la rentabilité</a></div><p class="admin-copy">Les données de trésorerie et de rentabilité sont identiques dans le tableau de rentabilité, l’Analyse produits et les fiches Stock pour cette période.</p><a class="text-link" href="<?= e(url('/admin/accounting-journal.php?start=' . rawurlencode($start) . '&end=' . rawurlencode($end))) ?>">Contrôler le Journal de la période →</a></section>
 <?php endif; ?>
 
 <section class="admin-grid">

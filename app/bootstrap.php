@@ -4,6 +4,11 @@ declare(strict_types=1);
 const APP_ROOT = __DIR__;
 
 $configFile = APP_ROOT . '/config.php';
+// An isolated CLI/loopback test server must never use production credentials.
+// Apache/FPM ignores this override entirely.
+if (in_array(PHP_SAPI, ['cli', 'cli-server'], true) && getenv('LHORLOGER_LOCAL_CONFIG')) {
+    $configFile = (string) getenv('LHORLOGER_LOCAL_CONFIG');
+}
 if (!is_file($configFile)) {
     http_response_code(503);
     exit('Configuration requise. Créez app/config.php à partir de app/config.example.php.');
