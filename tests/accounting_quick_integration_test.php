@@ -93,12 +93,6 @@ qa_assert(!accounting_order_has_open_payment_exception($pdo, 'QA-' . $suffix . '
 $category = accounting_category_by_code($pdo, 'meta_ads');
 $expense = accounting_simple_expense($pdo, ['category_id' => $category['id'], 'product_id' => $productIds[0], 'label' => '']);
 qa_assert($expense['scope'] === 'product' && str_contains($expense['label'], 'Nocturne'), 'Expense label and product scope inferred on server');
-$archiveRef = accounting_archive_order($pdo, $e, false, $userId);
-$archive = $pdo->prepare('SELECT restored_at FROM order_archives WHERE order_ref = ?'); $archive->execute([$archiveRef]);
-qa_assert($archive->fetch() === ['restored_at' => null], 'Cancelled spam hidden without deleting its order');
-accounting_archive_order($pdo, $e, true, $userId); $archive->execute([$archiveRef]);
-qa_assert($archive->fetch()['restored_at'] !== null, 'Hidden order can be restored');
-qa_throws(fn() => accounting_archive_order($pdo, $a, false, $userId), 'Financial sale cannot be hidden');
 // Enough harmless local fixtures for pagination and visual testing.
 for ($i = 0; $i < 31; $i++) qa_order($pdo, 'QA-' . $suffix . '-UI' . $i, $productIds[0], $variantIds[0], $yesterday, $i % 2 ? 'Meta' : '');
 echo "OK — isolated MySQL integration; production untouched\n";

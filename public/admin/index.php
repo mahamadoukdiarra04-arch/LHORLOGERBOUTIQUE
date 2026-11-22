@@ -58,7 +58,7 @@ $stock = $pdo->query(
 $low = array_values(array_filter($stock, static fn(array $item): bool => (int) $item['quantity'] <= 6));
 $recent = $pdo->query(
     'SELECT id, order_ref, customer_first_name, customer_last_name, product_name, variant, quantity, status, unit_price_fcfa, created_at
-     FROM orders o WHERE NOT EXISTS (SELECT 1 FROM order_archives ar WHERE BINARY ar.order_ref = BINARY o.order_ref AND ar.restored_at IS NULL) ORDER BY created_at DESC LIMIT 6'
+     FROM orders ORDER BY created_at DESC LIMIT 6'
 )->fetchAll();
 $periodQuery = http_build_query(['period' => $periodKey, 'start' => $start, 'end' => $end]);
 

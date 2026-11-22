@@ -63,7 +63,7 @@ if (!array_key_exists($historyPeriod, $historyPeriods)) $historyPeriod = '30';
 $historyCloser = trim((string) ($_GET['closer'] ?? ''));
 if ($historyCloser !== '' && !in_array($historyCloser, $closerIdentities, true)) $historyCloser = '';
 
-$historyWhere = ['NOT EXISTS (SELECT 1 FROM order_archives ar WHERE BINARY ar.order_ref = BINARY o.order_ref AND ar.restored_at IS NULL)'];
+$historyWhere = [];
 $historyParams = [];
 if ($historyPeriod !== 'all') {
     $historyWhere[] = 't.updated_at >= DATE_SUB(NOW(), INTERVAL ' . (int) $historyPeriod . ' DAY)';

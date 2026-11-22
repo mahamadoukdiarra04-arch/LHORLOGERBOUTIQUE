@@ -25,4 +25,5 @@ quick_assert(strlen(accounting_quick_plan_hash($plan)) === 64, 'Empreinte compl�
 $orders = file_get_contents(__DIR__ . '/../public/admin/orders.php');
 quick_assert(!str_contains($orders, 'LIMIT 150') && str_contains($orders, 'OFFSET'), 'Pagination SQL, pas une limite silencieuse.');
 quick_assert(str_contains($orders, 'filters[') && str_contains($orders, 'Pages de l’historique'), 'Les filtres sont conservés.');
+quick_assert(!str_contains($orders, 'archive_order') && !str_contains($orders, 'Commandes masquées') && !str_contains($orders, 'order_archives'), 'Le masquage est retiré de la gestion.');
 echo "OK — saisie rapide : sélection, statuts, dates, empreintes, pagination\n";

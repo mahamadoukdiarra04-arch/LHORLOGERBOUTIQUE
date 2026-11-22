@@ -22,7 +22,6 @@ $search = mb_substr(trim((string) ($listInput['q'] ?? '')), 0, 160);
 $perPage = (int) ($listInput['per_page'] ?? 25);
 if (!in_array($perPage, [10, 25, 50], true)) $perPage = 25;
 $page = max(1, (int) ($listInput['page'] ?? 1));
-$archivedView = ($listInput['view'] ?? '') === 'archived';
 function orders_filter_date(mixed $value): string {
     $date = is_string($value) ? $value : '';
     if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $date, $parts)) return '';
@@ -30,22 +29,12 @@ function orders_filter_date(mixed $value): string {
 }
 $dateStart = orders_filter_date($listInput['start'] ?? '');
 $dateEnd = orders_filter_date($listInput['end'] ?? '');
-$listQuery = ['q' => $search, 'status' => $statusFilter, 'start' => $dateStart, 'end' => $dateEnd, 'per_page' => $perPage, 'page' => $page, 'view' => $archivedView ? 'archived' : ''];
+$listQuery = ['q' => $search, 'status' => $statusFilter, 'start' => $dateStart, 'end' => $dateEnd, 'per_page' => $perPage, 'page' => $page];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $orderId = (int) ($_POST['order_id'] ?? 0);
     $formAction = (string) ($_POST['form_action'] ?? 'update_status');
-
-    if (in_array($formAction, ['archive_order', 'restore_order'], true)) {
-        try {
-            $ref = accounting_archive_order($pdo, $orderId, $formAction === 'restore_order', accounting_current_user_id());
-            flash('success', $ref . ($formAction === 'restore_order' ? ' est de nouveau visible.' : ' a été masquée. Elle reste accessible dans « Commandes masquées ».'));
-        } catch (Throwable $exception) {
-            flash('error', accounting_safe_error_message($exception, 'Cette commande ne peut pas être masquée pour le moment.'));
-        }
-        redirect('/admin/orders.php');
-    }
 
     if ($formAction === 'edit_order') {
         try {
@@ -74,9 +63,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $selected->execute([$orderId]);
             $order = $selected->fetch();
             if (!$order) throw new RuntimeException('Commande introuvable.');
-            $archive = $pdo->prepare('SELECT order_ref FROM order_archives WHERE order_ref = ? AND restored_at IS NULL');
-            $archive->execute([$order['order_ref']]);
-            if ($archive->fetchColumn()) throw new RuntimeException('Restaurez cette commande avant de modifier son statut.');
 
             $allLines = $pdo->prepare('SELECT id, status, stock_processed FROM orders WHERE order_ref = ? FOR UPDATE');
             $allLines->execute([$order['order_ref']]);
@@ -104,7 +90,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $messages = [
                 'Commande introuvable.',
                 'Une référence déjà livrée ne peut plus être modifiée depuis cette liste.',
-                'Restaurez cette commande avant de modifier son statut.',
             ];
             flash('error', in_array($exception->getMessage(), $messages, true) ? $exception->getMessage() : 'La mise à jour a échoué. Réessayez dans quelques instants.');
             error_log('L’Horloger: mise à jour de commande échouée.');
@@ -114,7 +99,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $selected = (int) ($_GET['order'] ?? 0);
-$where = [($archivedView ? '' : 'NOT ') . 'EXISTS (SELECT 1 FROM order_archives archive WHERE BINARY archive.order_ref = BINARY o.order_ref AND archive.restored_at IS NULL)'];
+$where = [];
 $params = [];
 if (in_array($statusFilter, ['À confirmer', 'Confirmée', 'En livraison', 'Livrée', 'Annulée'], true)) {
     $where[] = 'o.status = ?';
@@ -179,7 +164,7 @@ if ($selectedOrder && $selectedOrder['status'] === 'Livrée') {
 $adminPageTitle = 'Commandes';
 require APP_ROOT . '/templates/admin-header.php';
 ?>
-<header class="admin-page-head">
+<header class="admin-page-head orders-page-head">
   <div>
     <p class="admin-kicker">Commandes</p>
     <h1>Chaque détail à portée de main.</h1>
@@ -188,15 +173,16 @@ require APP_ROOT . '/templates/admin-header.php';
   <div class="metric"><p>À confirmer</p><strong><?= (int) $pdo->query("SELECT COUNT(*) FROM orders WHERE status='À confirmer'")->fetchColumn() ?></strong></div>
 </header>
 
-<div class="orders-page-links"><a class="admin-button" href="<?= e(url('/admin/accounting-quick.php')) ?>">Saisie rapide des commandes</a><a class="text-link" href="?view=<?= $archivedView ? '' : 'archived' ?>"><?= $archivedView ? 'Revenir aux commandes visibles' : 'Commandes masquées' ?></a></div>
-<form class="admin-filter orders-filter" method="get">
-  <?php if ($archivedView): ?><input type="hidden" name="view" value="archived"><?php endif; ?>
+<section class="admin-panel orders-controls" aria-label="Actions et filtres des commandes">
+<div class="orders-controls-head"><div><h2>Historique des commandes</h2><p>Recherchez une commande ou choisissez une période.</p></div><a class="admin-button" href="<?= e(url('/admin/accounting-quick.php')) ?>">Saisie rapide des commandes</a></div>
+<form class="orders-filter" method="get">
   <label>Rechercher<input name="q" value="<?= e($search) ?>" placeholder="Client, référence ou quartier"></label>
   <label>Statut<select name="status"><option value="">Tous les états</option><?php foreach (['À confirmer', 'Confirmée', 'En livraison', 'Livrée', 'Annulée'] as $option): ?><option <?= $statusFilter === $option ? 'selected' : '' ?>><?= e($option) ?></option><?php endforeach; ?></select></label>
   <label>Commandées du<input type="date" name="start" value="<?= e($dateStart) ?>"></label><label>Au<input type="date" name="end" value="<?= e($dateEnd) ?>"></label>
   <label>Par page<select name="per_page"><?php foreach ([10, 25, 50] as $size): ?><option value="<?= $size ?>" <?= $perPage === $size ? 'selected' : '' ?>><?= $size ?></option><?php endforeach; ?></select></label>
   <button class="admin-button">Filtrer</button>
 </form>
+</section>
 <div class="orders-list-head"><span><?= $totalOrders ?> ligne(s) de commande · <?= $totalOrders ? (($page - 1) * $perPage + 1) : 0 ?> à <?= min($totalOrders, $page * $perPage) ?></span><span>Page <?= $page ?> / <?= $totalPages ?></span></div>
 
 <section class="admin-panel"><div class="admin-table-wrap mobile-card-table-wrap"><table class="admin-table mobile-card-table orders-table"><thead><tr><th>Commande</th><th>Client</th><th>Produit</th><th>Canal</th><th>État</th><th>Montant</th><th></th></tr></thead><tbody>
@@ -276,7 +262,6 @@ require APP_ROOT . '/templates/admin-header.php';
         <section class="order-edit-panel is-locked"><p class="admin-kicker">Modification verrouillée</p><h3>Cette commande ne peut plus être modifiée.</h3><p><?= e((string) $selectedEditability['reason']) ?></p></section>
       <?php endif; ?>
       <h3 class="order-detail-group-title order-detail-actions-title">Suivi et actions</h3>
-      <?php if ($archivedView || $order['status'] === 'Annulée'): ?><form method="post" class="quick-links"><?= csrf_field() ?><input type="hidden" name="form_action" value="<?= $archivedView ? 'restore_order' : 'archive_order' ?>"><input type="hidden" name="order_id" value="<?= (int) $order['id'] ?>"><button type="submit" class="admin-button"><?= $archivedView ? 'Restaurer cette commande' : 'Masquer cette commande indésirable' ?></button><p class="quick-explanation">Réversible. Les commandes avec écritures comptables ou mouvements de stock sont protégées.</p></form><?php endif; ?>
       <?php if ($order['status'] === 'Livrée'): ?>
         <p class="admin-copy">Cette référence a été livrée. Son historique financier est protégé contre toute modification directe.</p>
         <?php if (isset($selectedFinanceError)): ?>

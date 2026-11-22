@@ -247,30 +247,3 @@ function accounting_quick_execute(PDO $pdo, array $plan, ?int $userId = null): a
     }
     return $result;
 }
-
-/** Reversible removal of cancelled spam, never deletion of a financial sale. */
-function accounting_archive_order(PDO $pdo, int $orderId, bool $restore, ?int $userId = null): string {
-    return accounting_with_transaction($pdo, function () use ($pdo, $orderId, $restore, $userId): string {
-        $selected = $pdo->prepare('SELECT order_ref FROM orders WHERE id = ?');
-        $selected->execute([$orderId]);
-        $ref = $selected->fetchColumn();
-        if ($ref === false) throw new RuntimeException('Commande introuvable.');
-        $lines = accounting_delivery_order_lines($pdo, (string) $ref, true);
-        if (!$restore) {
-            foreach ($lines as $line) {
-                if ($line['status'] !== 'Annulée' || (int) $line['stock_processed'] !== 0) throw new RuntimeException('Seule une commande annulée sans mouvement de stock peut être masquée.');
-                $stock = $pdo->prepare('SELECT id FROM stock_movements WHERE order_id = ? LIMIT 1');
-                $stock->execute([$line['id']]);
-                if ($stock->fetchColumn()) throw new RuntimeException('Cette commande possède un historique de stock et ne peut pas être masquée.');
-            }
-            if (accounting_order_has_confirmed_entries($pdo, (string) $ref)) throw new RuntimeException('Cette commande possède des écritures comptables et ne peut pas être masquée.');
-            $archive = $pdo->prepare("INSERT INTO order_archives (order_ref, reason, archived_by_user_id) VALUES (?, 'Commande indésirable masquée par la gestion', ?) ON DUPLICATE KEY UPDATE archived_at = CURRENT_TIMESTAMP, archived_by_user_id = VALUES(archived_by_user_id), restored_at = NULL");
-            $archive->execute([$ref, $userId]);
-        } else {
-            $restoreQuery = $pdo->prepare('UPDATE order_archives SET restored_at = NOW() WHERE order_ref = ? AND restored_at IS NULL');
-            $restoreQuery->execute([$ref]);
-        }
-        accounting_audit($pdo, $restore ? 'restore_order' : 'archive_order', 'order_reference', null, null, ['order_ref' => $ref], $userId);
-        return (string) $ref;
-    });
-}
